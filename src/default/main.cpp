@@ -89,6 +89,15 @@ int rollPrecision = 158; // this variable represents the time in milliseconds th
 int pitchMax = 175; // this sets the maximum angle of the pitch servo to prevent it from crashing, it should remain below 180, and be greater than the pitchMin
 int pitchMin = 10; // this sets the minimum angle of the pitch servo to prevent it from crashing, it should remain above 0, and be less than the pitchMax
 
+void shakeHeadYes(int moves);
+void shakeHeadNo(int moves);
+void leftMove(int moves);
+void rightMove(int moves);
+void upMove(int moves);
+void downMove (int moves);
+void fire();
+void fireAll();
+void homeServos();
 
 //////////////////////////////////////////////////
               //  S E T U P  //
@@ -108,7 +117,7 @@ void setup() {
 
     Serial.print(F("Ready to receive IR signals of protocols: "));
     printActiveIRProtocols(&Serial);
-    Serial.println(F("at pin " STR(9)));
+    Serial.println("at pin 9");
 
 
     homeServos(); //set servo motors to home position
