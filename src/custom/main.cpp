@@ -30,7 +30,7 @@
               //  LIBRARIES  //
 //////////////////////////////////////////////////
 #include <Arduino.h>
-#include <Servo.h>
+#include <ESP32Servo.h>
 //#include "PinDefinitionsAndMore.h" // Define macros for input and output pin etc.
 #include <IRremote.hpp>
 
