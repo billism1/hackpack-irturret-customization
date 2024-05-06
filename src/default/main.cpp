@@ -89,6 +89,7 @@ int rollPrecision = 158; // this variable represents the time in milliseconds th
 int pitchMax = 175; // this sets the maximum angle of the pitch servo to prevent it from crashing, it should remain below 180, and be greater than the pitchMin
 int pitchMin = 10; // this sets the minimum angle of the pitch servo to prevent it from crashing, it should remain above 0, and be less than the pitchMax
 
+void shootAroundRandomly();
 void shakeHeadYes(int moves);
 void shakeHeadNo(int moves);
 void leftMove(int moves);
@@ -185,11 +186,32 @@ void loop() {
               delay(50);
               break;
 
+            case cmd0:
+              shakeHeadNo(3);
+              delay(50);
+              break;
+
+            case cmd9:
+              shakeHeadYes(3);
+              delay(50);
+              break;
+
+            case cmd7:
+              shootAroundRandomly();
+              break;
         }
     }
     delay(5);
 }
 
+void shootAroundRandomly() {
+  rollServo.write(rollStopSpeed + rollMoveSpeed);//start rotating the servo
+  leftMove(6);
+  rollServo.write(rollStopSpeed);//stop rotating the servo
+  delay(5); // delay for smoothness
+  Serial.println("FIRING ALL RANDOMLY AROUND");
+
+}
 
 void shakeHeadYes(int moves = 3) {
       Serial.println("YES");
