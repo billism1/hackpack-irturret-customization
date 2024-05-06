@@ -4,6 +4,11 @@
 
 #define DECODE_NEC  //defines the type of IR transmission to decode based on the remote. See IRremote library for examples on how to decode other types of remote
 
+#define IR_PIN 9
+#define YAW_PIN 10
+#define PITCH_PIN 11
+#define ROLL_PIN 12
+
 /*
 ** if you want to add other remotes (as long as they're on the same protocol above):
 ** press the desired button and look for a hex code similar to those below (ex: 0x11)
@@ -72,15 +77,15 @@ void homeServos();
 void setup() {
     Serial.begin(9600); // initializes the Serial communication between the computer and the microcontroller
 
-    yawServo.attach(10); //attach YAW servo to pin 10
-    pitchServo.attach(11); //attach PITCH servo to pin 11
-    rollServo.attach(12); //attach ROLL servo to pin 12
+    yawServo.attach(YAW_PIN); //attach YAW servo to pin YAW_PIN
+    pitchServo.attach(PITCH_PIN); //attach PITCH servo to pin 11
+    rollServo.attach(ROLL_PIN); //attach ROLL servo to pin 12
 
     // Just to know which program is running on my microcontroller
     Serial.println(F("START " __FILE__ " from " __DATE__ "\r\nUsing library version " VERSION_IRREMOTE));
 
     // Start the receiver and if not 3. parameter specified, take LED_BUILTIN pin from the internal boards definition as default feedback LED
-    IrReceiver.begin(9, ENABLE_LED_FEEDBACK);
+    IrReceiver.begin(IR_PIN, ENABLE_LED_FEEDBACK);
 
     Serial.print(F("Ready to receive IR signals of protocols: "));
     printActiveIRProtocols(&Serial);
