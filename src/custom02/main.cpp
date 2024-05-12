@@ -412,79 +412,79 @@ void loop()
     digitalWrite(LED_PIN, LOW);
   }
 
-  // /*
-  //  * Check if received data is available and if yes, try to decode it.
-  //  */
-  // if (IrReceiver.decode())
-  // {
-  //   /*
-  //    * Print a short summary of received data
-  //    */
-  //   IrReceiver.printIRResultShort(&Serial);
-  //   IrReceiver.printIRSendUsage(&Serial);
-  //   if (IrReceiver.decodedIRData.protocol == UNKNOWN)
-  //   { // command garbled or not recognized
-  //     Serial.println(F("Received noise or an unknown (or not yet enabled) protocol - if you wish to add this command, define it at the top of the file with the hex code printed below (ex: 0x8)"));
-  //     // We have an unknown protocol here, print more info
-  //     IrReceiver.printIRResultRawFormatted(&Serial, true);
-  //   }
-  //   Serial.println();
+  /*
+   * Check if received data is available and if yes, try to decode it.
+   */
+  if (IrReceiver.decode())
+  {
+    /*
+     * Print a short summary of received data
+     */
+    IrReceiver.printIRResultShort(&Serial);
+    IrReceiver.printIRSendUsage(&Serial);
+    if (IrReceiver.decodedIRData.protocol == UNKNOWN)
+    { // command garbled or not recognized
+      Serial.println(F("Received noise or an unknown (or not yet enabled) protocol - if you wish to add this command, define it at the top of the file with the hex code printed below (ex: 0x8)"));
+      // We have an unknown protocol here, print more info
+      IrReceiver.printIRResultRawFormatted(&Serial, true);
+    }
+    Serial.println();
 
-  //   /*
-  //    * !!!Important!!! Enable receiving of the next value,
-  //    * since receiving has stopped after the end of the current received data packet.
-  //    */
-  //   IrReceiver.resume(); // Enable receiving of the next value
+    /*
+     * !!!Important!!! Enable receiving of the next value,
+     * since receiving has stopped after the end of the current received data packet.
+     */
+    IrReceiver.resume(); // Enable receiving of the next value
 
-  //   /*
-  //    * Finally, check the received data and perform actions according to the received command
-  //    */
+    /*
+     * Finally, check the received data and perform actions according to the received command
+     */
 
-  //   switch (IrReceiver.decodedIRData.command)
-  //   { // this is where the commands are handled
+    switch (IrReceiver.decodedIRData.command)
+    { // this is where the commands are handled
 
-  //   case up: // pitch up
-  //     upMove(1);
-  //     break;
+    case up: // pitch up
+      upMove(1);
+      break;
 
-  //   case down: // pitch down
-  //     downMove(1);
-  //     break;
+    case down: // pitch down
+      downMove(1);
+      break;
 
-  //   case left: // fast counterclockwise rotation
-  //     leftMove(1);
-  //     break;
+    case left: // fast counterclockwise rotation
+      leftMove(1);
+      break;
 
-  //   case right: // fast clockwise rotation
-  //     rightMove(1);
-  //     break;
+    case right: // fast clockwise rotation
+      rightMove(1);
+      break;
 
-  //   case ok: // firing routine
-  //     fire();
-  //     // Serial.println("FIRE");
-  //     break;
+    case ok: // firing routine
+      fire();
+      // Serial.println("FIRE");
+      break;
 
-  //   case star:
-  //     fireAll();
-  //     delay(50);
-  //     break;
+    case star:
+      fireAll();
+      delay(50);
+      break;
 
-  //   case cmd0:
-  //     shakeHeadNo(3);
-  //     delay(50);
-  //     break;
+    case cmd0:
+      shakeHeadNo(3);
+      delay(50);
+      break;
 
-  //   case cmd9:
-  //     shakeHeadYes(3);
-  //     delay(50);
-  //     break;
+    case cmd9:
+      shakeHeadYes(3);
+      delay(50);
+      break;
 
-  //   case cmd7:
-  //     yosemiteSam();
-  //     break;
-  //   }
-  // }
-  // delay(5);
+    case cmd7:
+      yosemiteSam();
+      break;
+    }
+  }
+  delay(5);
 }
 
 /// @brief Shoot around aimlessly.
