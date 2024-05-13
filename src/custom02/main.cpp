@@ -6,8 +6,17 @@
 #include "SD_MMC.h"           // SD Card ESP32
 
 // REPLACE WITH YOUR NETWORK CREDENTIALS
-const char *ssid = "The Multiverse";
-const char *password = "beer is good 123";
+const char *ssid = "****";
+const char *password = "****";
+
+// Azure Computer Vision resource
+// Free tier: "Free F0" (20 Calls per minute, 5K Calls per month)
+// https://portal.azure.com/#create/Microsoft.CognitiveServicesComputerVision
+// https://billk-computer-vision.cognitiveservices.azure.com/
+// https://learn.microsoft.com/en-us/azure/ai-services/computer-vision/how-to/call-analyze-image-40?tabs=csharp&pivots=programming-language-csharp
+
+const char *computerVisionEndpoint = "****";
+const char *computerVisionApiKey = "****";
 
 const long cameraInterval = 10000;
 unsigned long previousMillis = 0;
@@ -176,7 +185,7 @@ void configInitCamera()
 
   sensor_t * s = esp_camera_sensor_get();
   // initial sensors are flipped vertically and colors are a bit saturated
-  s->set_vflip(s, 1); // flip it back
+  //s->set_vflip(s, 1); // flip it back
   s->set_brightness(s, 1); // up the brightness just a bit
   s->set_saturation(s, 0); // lower the saturation
 }
