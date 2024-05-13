@@ -13,18 +13,14 @@ const char *password = "***";
 
 // Azure Computer Vision resource
 // Free tier: "Free F0" (20 Calls per minute, 5K Calls per month)
-// https://***.cognitiveservices.azure.com/
 // https://portal.azure.com/#create/Microsoft.CognitiveServicesComputerVision
 // https://learn.microsoft.com/en-us/azure/ai-services/computer-vision/how-to/call-analyze-image-40?tabs=csharp&pivots=programming-language-csharp
-
 // https://learn.microsoft.com/en-us/azure/ai-services/computer-vision/quickstarts-sdk/image-analysis-client-library-40?tabs=visual-studio%2Cwindows&pivots=programming-language-rest-api
 
-//const char *computerVisionEndpoint = "https://***.cognitiveservices.azure.com/";
-
-const char* computerVisionEndpoint = "https://***.cognitiveservices.azure.com/computervision/imageanalysis:analyze?features=caption,denseCaptions,read&model-version=latest&language=en&api-version=2024-02-01";
+const char* computerVisionEndpoint = "https://***.cognitiveservices.azure.com/computervision/imageanalysis:analyze?features=caption,denseCaptions,read,objects,people&model-version=latest&language=en&api-version=2024-02-01";
 const char *computerVisionApiKey = "***";
 
-const long cameraInterval = 10000;
+const long cameraInterval = 15000;
 unsigned long previousMillis = 0;
 
 // REPLACE WITH YOUR TIMEZONE STRING: https://github.com/nayarsystems/posix_tz_db/blob/master/zones.csv
@@ -330,48 +326,32 @@ void takePhotoAndSave()
   file.close();
   esp_camera_fb_return(fb);
 
-
-
-
   // Send to Azure Cognitive Services
   
   Serial.println("Opening file to send to Azure Cognitive Services...");
 
   // Open the image file
   File imageFile = fs.open(path.c_str());
-  if (!imageFile) {
+  if (!imageFile)
+  {
     Serial.println("Failed to open image file");
     return;
   }
 
-  // Read the image data from the file
   size_t fileSize = imageFile.size();
-  uint8_t* imageData = (uint8_t*)malloc(fileSize);
-  size_t imageDataSize = imageFile.read(imageData, fileSize);
-  imageFile.close();
 
-  Serial.println("Converting image binary data to base64...");
-
-  // Encode the image data as base64
-  String encodedImage = base64::encode(imageData, fileSize);
-  size_t encodedLength = encodedImage.length();
-
-  Serial.printf("Sending image to Azure Cognitive Services (File size %d, Image data size: %d, base64 length: %d)...\n", fileSize, imageDataSize, encodedLength);
+  Serial.printf("Sending image to Azure Cognitive Services (File size %d)...\n", fileSize);
 
   // Send the HTTP POST request to Azure Cognitive Services
-  // HTTPClient http;
-  // http.begin(computerVisionEndpoint);
-  // http.addHeader("Content-Type", "application/octet-stream");
-  // http.addHeader("Content-Length", String(encodedLength));
-  // http.addHeader("Ocp-Apim-Subscription-Key", computerVisionApiKey);
-  // int httpResponseCode = http.POST(encodedImage);
-
   HTTPClient http;
   http.begin(computerVisionEndpoint);
   http.addHeader("Content-Type", "application/octet-stream");
-  //http.addHeader("Content-Length", String(fileSize));
   http.addHeader("Ocp-Apim-Subscription-Key", computerVisionApiKey);
-  int httpResponseCode = http.POST(imageData, imageDataSize);
+
+  Serial.println("Streaming file to endpoint...");
+
+  // Stream file into http POST request
+  int httpResponseCode = http.sendRequest("POST", &imageFile, fileSize);
 
   // Check for a successful request
   if (httpResponseCode == HTTP_CODE_OK)
@@ -379,6 +359,24 @@ void takePhotoAndSave()
     String response = http.getString();
     Serial.println("Response from Azure Cognitive Services:");
     Serial.println(response);
+
+    // Extract filename without extension
+    int dotIndex = path.lastIndexOf('.');
+    String fileName = path.substring(0, dotIndex);
+
+    // Create a text file with the same name as the image file
+    String textFileName = fileName + ".json";
+    File textFile = fs.open(textFileName, FILE_WRITE);
+    if (textFile)
+    {
+      textFile.println(response);
+      textFile.close();
+      Serial.println("Response saved to " + textFileName);
+    }
+    else
+    {
+      Serial.println("Failed to create text file");
+    }
   }
   else
   {
@@ -390,7 +388,6 @@ void takePhotoAndSave()
   }
 
   // Clean up
-  free(imageData);
   http.end();
 
   Serial.println("\ntakePhotoAndSave(): End");
