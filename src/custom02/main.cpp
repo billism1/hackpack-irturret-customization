@@ -2,21 +2,27 @@
 #include <ESP32Servo.h>
 #include <IRremote.hpp>
 #include <WiFi.h>
+#include <HTTPClient.h>
+#include <base64.h>
 #include "esp_camera.h"
 #include "SD_MMC.h"           // SD Card ESP32
 
 // REPLACE WITH YOUR NETWORK CREDENTIALS
-const char *ssid = "****";
-const char *password = "****";
+const char *ssid = "***";
+const char *password = "***";
 
 // Azure Computer Vision resource
 // Free tier: "Free F0" (20 Calls per minute, 5K Calls per month)
+// https://***.cognitiveservices.azure.com/
 // https://portal.azure.com/#create/Microsoft.CognitiveServicesComputerVision
-// https://billk-computer-vision.cognitiveservices.azure.com/
 // https://learn.microsoft.com/en-us/azure/ai-services/computer-vision/how-to/call-analyze-image-40?tabs=csharp&pivots=programming-language-csharp
 
-const char *computerVisionEndpoint = "****";
-const char *computerVisionApiKey = "****";
+// https://learn.microsoft.com/en-us/azure/ai-services/computer-vision/quickstarts-sdk/image-analysis-client-library-40?tabs=visual-studio%2Cwindows&pivots=programming-language-rest-api
+
+//const char *computerVisionEndpoint = "https://***.cognitiveservices.azure.com/";
+
+const char* computerVisionEndpoint = "https://***.cognitiveservices.azure.com/computervision/imageanalysis:analyze?features=caption,denseCaptions,read&model-version=latest&language=en&api-version=2024-02-01";
+const char *computerVisionApiKey = "***";
 
 const long cameraInterval = 10000;
 unsigned long previousMillis = 0;
@@ -323,6 +329,69 @@ void takePhotoAndSave()
   Serial.println("\ntakePhotoAndSave(): Close file...");
   file.close();
   esp_camera_fb_return(fb);
+
+
+
+
+  // Send to Azure Cognitive Services
+  
+  Serial.println("Opening file to send to Azure Cognitive Services...");
+
+  // Open the image file
+  File imageFile = fs.open(path.c_str());
+  if (!imageFile) {
+    Serial.println("Failed to open image file");
+    return;
+  }
+
+  // Read the image data from the file
+  size_t fileSize = imageFile.size();
+  uint8_t* imageData = (uint8_t*)malloc(fileSize);
+  size_t imageDataSize = imageFile.read(imageData, fileSize);
+  imageFile.close();
+
+  Serial.println("Converting image binary data to base64...");
+
+  // Encode the image data as base64
+  String encodedImage = base64::encode(imageData, fileSize);
+  size_t encodedLength = encodedImage.length();
+
+  Serial.printf("Sending image to Azure Cognitive Services (File size %d, Image data size: %d, base64 length: %d)...\n", fileSize, imageDataSize, encodedLength);
+
+  // Send the HTTP POST request to Azure Cognitive Services
+  // HTTPClient http;
+  // http.begin(computerVisionEndpoint);
+  // http.addHeader("Content-Type", "application/octet-stream");
+  // http.addHeader("Content-Length", String(encodedLength));
+  // http.addHeader("Ocp-Apim-Subscription-Key", computerVisionApiKey);
+  // int httpResponseCode = http.POST(encodedImage);
+
+  HTTPClient http;
+  http.begin(computerVisionEndpoint);
+  http.addHeader("Content-Type", "application/octet-stream");
+  //http.addHeader("Content-Length", String(fileSize));
+  http.addHeader("Ocp-Apim-Subscription-Key", computerVisionApiKey);
+  int httpResponseCode = http.POST(imageData, imageDataSize);
+
+  // Check for a successful request
+  if (httpResponseCode == HTTP_CODE_OK)
+  {
+    String response = http.getString();
+    Serial.println("Response from Azure Cognitive Services:");
+    Serial.println(response);
+  }
+  else
+  {
+    Serial.print("HTTP POST request failed, error: ");
+    Serial.println(httpResponseCode);
+    String response = http.getString();
+    Serial.println("Response content:");
+    Serial.println(response);
+  }
+
+  // Clean up
+  free(imageData);
+  http.end();
 
   Serial.println("\ntakePhotoAndSave(): End");
 }
