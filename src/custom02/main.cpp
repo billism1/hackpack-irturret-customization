@@ -8,6 +8,8 @@
 #include "esp_camera.h"
 #include "SD_MMC.h"           // SD Card ESP32
 
+const char *networkHostname = "turret_mod";
+
 // REPLACE WITH YOUR NETWORK CREDENTIALS
 const char *ssid = "***";
 const char *password = "***";
@@ -134,7 +136,7 @@ void initOTA()
   // ArduinoOTA.setPort(3232);
 
   // Hostname defaults to esp3232-[MAC]
-  ArduinoOTA.setHostname("esp32-c3-polka");
+  ArduinoOTA.setHostname(networkHostname);
 
   // No authentication by default
   // ArduinoOTA.setPassword("admin");
@@ -146,32 +148,35 @@ void initOTA()
 
   ArduinoOTA
       .onStart([]()
-               {
-      Serial.println("OTA update starting.");
+      {
+        Serial.println("OTA update starting.");
 
-      Serial.println("Stopping AudioTools copier.");
-      copier.end();
+        String type;
+        if (ArduinoOTA.getCommand() == U_FLASH)
+          type = "sketch";
+        else // U_SPIFFS
+          type = "filesystem";
 
-      String type;
-      if (ArduinoOTA.getCommand() == U_FLASH)
-        type = "sketch";
-      else // U_SPIFFS
-        type = "filesystem";
-
-      // NOTE: if updating SPIFFS this would be the place to unmount SPIFFS using SPIFFS.end()
-      Serial.println("Start updating " + type); })
+        // NOTE: if updating SPIFFS this would be the place to unmount SPIFFS using SPIFFS.end()
+        Serial.println("Start updating " + type);
+      })
       .onEnd([]()
-             { Serial.println("\nEnd"); })
+      {
+        Serial.println("\nEnd");
+      })
       .onProgress([](unsigned int progress, unsigned int total)
-                  { Serial.printf("Progress: %u%%\r", (progress / (total / 100))); })
+      {
+        Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
+      })
       .onError([](ota_error_t error)
-               {
-      Serial.printf("Error[%u]: ", error);
-      if (error == OTA_AUTH_ERROR) Serial.println("Auth Failed");
-      else if (error == OTA_BEGIN_ERROR) Serial.println("Begin Failed");
-      else if (error == OTA_CONNECT_ERROR) Serial.println("Connect Failed");
-      else if (error == OTA_RECEIVE_ERROR) Serial.println("Receive Failed");
-      else if (error == OTA_END_ERROR) Serial.println("End Failed"); });
+      {
+        Serial.printf("Error[%u]: ", error);
+        if (error == OTA_AUTH_ERROR) Serial.println("Auth Failed");
+        else if (error == OTA_BEGIN_ERROR) Serial.println("Begin Failed");
+        else if (error == OTA_CONNECT_ERROR) Serial.println("Connect Failed");
+        else if (error == OTA_RECEIVE_ERROR) Serial.println("Receive Failed");
+        else if (error == OTA_END_ERROR) Serial.println("End Failed");
+      });
 
   ArduinoOTA.begin();
 }
@@ -450,6 +455,11 @@ void setup()
   initWiFi();
   Serial.println("\nDone initializing wifi - OK!");
 
+  // Initialize OTA (Over the Air) updates
+  Serial.println("\nInitializing OTA...");
+  initOTA();
+  Serial.println("\nDone initializing OTA - OK!");
+
   // Initialize time with timezone
   Serial.println("\nInitializing time...");
   initTime(myTimezone);
@@ -487,6 +497,9 @@ void setup()
 // Loop
 void loop()
 {
+  // Check for an OTA request
+  ArduinoOTA.handle();
+
   unsigned long currentMillis = millis();
   if (currentMillis - previousMillis >= cameraInterval)
   {
