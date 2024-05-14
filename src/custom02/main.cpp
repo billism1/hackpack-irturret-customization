@@ -3,6 +3,7 @@
 #include <ESP32Servo.h>
 #include <IRremote.hpp>
 #include <WiFi.h>
+#include <WebServer.h>
 #include <HTTPClient.h>
 #include <base64.h>
 #include "esp_camera.h"
@@ -23,7 +24,9 @@ const char *password = "***";
 const char* computerVisionEndpoint = "https://***.cognitiveservices.azure.com/computervision/imageanalysis:analyze?features=caption,denseCaptions,read,objects,people&model-version=latest&language=en&api-version=2024-02-01";
 const char *computerVisionApiKey = "***";
 
-const long cameraInterval = 15000;
+bool computerVisionOn = false;
+
+const long cameraInterval = 30000;
 unsigned long previousMillis = 0;
 
 // REPLACE WITH YOUR TIMEZONE STRING: https://github.com/nayarsystems/posix_tz_db/blob/master/zones.csv
@@ -119,15 +122,34 @@ int pitchMin = 10;  // this sets the minimum angle of the pitch servo to prevent
 // Stores the camera configuration parameters
 camera_config_t config;
 
-void yosemiteSam();
-void shakeHeadYes(int moves);
-void shakeHeadNo(int moves);
-void leftMove(int moves);
-void rightMove(int moves);
-void upMove(int moves);
-void downMove(int moves);
-void fire();
-void fireAll();
+WebServer webServer(80);
+
+String SendHTML();
+
+// Web server handler prototypes
+void webServerHandle_OnRoot();
+void webServerHandle_NotFound();
+void webServerHandle_moveUp();
+void webServerHandle_moveDown();
+void webServerHandle_moveLeft();
+void webServerHandle_moveRight();
+void webServerHandle_fire();
+void webServerHandle_fireAll();
+void webServerHandle_shakeHeadNo();
+void webServerHandle_shakeHeadYes();
+void webServerHandle_yosemiteSam();
+void webServerHandle_toggleComputerVision();
+
+// Servo movement prototypes
+void handleCommand_moveUp();
+void handleCommand_moveDown();
+void handleCommand_moveLeft();
+void handleCommand_moveRight();
+void handleCommand_fire();
+void handleCommand_fireAll();
+void handleCommand_shakeHeadNo();
+void handleCommand_shakeHeadYes();
+void handleCommand_yosemiteSam();
 void homeServos();
 
 void initOTA()
@@ -247,6 +269,27 @@ void initWiFi()
     Serial.print(".");
     delay(500);
   }
+}
+
+// Initialize web server (for remote control)
+void initWebServer()
+{
+  webServer.on("/", webServerHandle_OnRoot);
+  webServer.onNotFound(webServerHandle_NotFound);
+
+  webServer.on("/moveUp", webServerHandle_moveUp);
+  webServer.on("/moveDown", webServerHandle_moveDown);
+  webServer.on("/moveLeft", webServerHandle_moveLeft);
+  webServer.on("/moveRight", webServerHandle_moveRight);
+  webServer.on("/fire", webServerHandle_fire);
+  webServer.on("/fireAll", webServerHandle_fireAll);
+  webServer.on("/shakeHeadNo", webServerHandle_shakeHeadNo);
+  webServer.on("/shakeHeadYes", webServerHandle_shakeHeadYes);
+  webServer.on("/yosemiteSam", webServerHandle_yosemiteSam);
+  webServer.on("/toggleComputerVision", webServerHandle_toggleComputerVision);
+
+  webServer.begin();
+  Serial.println("HTTP server started.");
 }
 
 // Function to set timezone
@@ -460,6 +503,11 @@ void setup()
   initOTA();
   Serial.println("\nDone initializing OTA - OK!");
 
+  // Initialize OTA (Over the Air) updates
+  Serial.println("\nInitializing web server...");
+  initWebServer();
+  Serial.println("\nDone initializing web server - OK!");
+
   // Initialize time with timezone
   Serial.println("\nInitializing time...");
   initTime(myTimezone);
@@ -498,29 +546,44 @@ void setup()
 void loop()
 {
   // Check for an OTA request
+  //Serial.println("\nChecking OTA...");
   ArduinoOTA.handle();
+
+  // Check for input from web site
+  //Serial.println("\nChecking web input...");
+  webServer.handleClient();
 
   unsigned long currentMillis = millis();
   if (currentMillis - previousMillis >= cameraInterval)
   {
     previousMillis = currentMillis;
 
-    digitalWrite(LED_PIN, HIGH);
-    delay(100);
-    digitalWrite(LED_PIN, LOW);
+    if (computerVisionOn)
+    {
+      Serial.println("\nComputer vision is ON. Proceeding to take a photo...");
 
-    takePhotoAndSave();
+      digitalWrite(LED_PIN, HIGH);
+      delay(100);
+      digitalWrite(LED_PIN, LOW);
+      delay(100);
+      digitalWrite(LED_PIN, HIGH);
+      delay(100);
+      digitalWrite(LED_PIN, LOW);
 
-    digitalWrite(LED_PIN, HIGH);
-    delay(100);
-    digitalWrite(LED_PIN, LOW);
-    delay(100);
-    digitalWrite(LED_PIN, HIGH);
-    delay(100);
-    digitalWrite(LED_PIN, LOW);
+      takePhotoAndSave();
+
+      digitalWrite(LED_PIN, HIGH);
+      delay(100);
+      digitalWrite(LED_PIN, LOW);
+    }
+    else
+    {
+      Serial.println("\nComputer vision is OFF. Skipping photo.");
+    }
   }
 
   // Check if received data is available and if yes, try to decode it.
+  //Serial.println("\nChecking IR input...");
   if (IrReceiver.decode())
   {
     // Print a short summary of received data
@@ -542,63 +605,55 @@ void loop()
     // this is where the commands are handled
     switch (IrReceiver.decodedIRData.command)
     {
-      case up: // pitch up
-        upMove(1);
-        break;
+      case up:
+          // pitch up
+          handleCommand_moveUp();
+          break;
 
-      case down: // pitch down
-        downMove(1);
-        break;
+      case down:
+          // pitch down
+          handleCommand_moveDown();
+          break;
 
-      case left: // fast counterclockwise rotation
-        leftMove(1);
-        break;
+      case left:
+          // fast counterclockwise rotation
+          handleCommand_moveLeft();
+          break;
 
-      case right: // fast clockwise rotation
-        rightMove(1);
-        break;
+      case right:
+          // fast clockwise rotation
+          handleCommand_moveRight();
+          break;
 
-      case ok: // firing routine
-        fire();
-        // Serial.println("FIRE");
-        break;
+      case ok:
+          handleCommand_fire();
+          break;
 
       case star:
-        fireAll();
-        delay(50);
-        break;
+          handleCommand_fireAll();
+          break;
 
       case cmd0:
-        shakeHeadNo(3);
-        delay(50);
-        break;
+          handleCommand_shakeHeadNo();
+          break;
 
       case cmd9:
-        shakeHeadYes(3);
-        delay(50);
-        break;
+          handleCommand_shakeHeadYes();
+          break;
 
       case cmd7:
-        yosemiteSam();
-        break;
+          handleCommand_yosemiteSam();
+          break;
     }
   }
-  delay(5);
-}
 
-/// @brief Shoot around aimlessly.
-void yosemiteSam()
-{
-  Serial.println("SPINNING AROUND FIRING AIMLESSLY");
-  rollServo.write(rollStopSpeed + rollMoveSpeed); // start rotating the servo
-  leftMove(7);
-  rollServo.write(rollStopSpeed); // stop rotating the servo
-  delay(5);                       // delay for smoothness
+  delay(5);
 }
 
 void shakeHeadYes(int moves = 3)
 {
   Serial.println("YES");
+
   int startAngle = pitchServoVal; // Current position of the pitch servo
   int lastAngle = pitchServoVal;
   int nodAngle = startAngle + 20; // Angle for nodding motion
@@ -630,6 +685,7 @@ void shakeHeadYes(int moves = 3)
 void shakeHeadNo(int moves = 3)
 {
   Serial.println("NO");
+
   int startAngle = pitchServoVal; // Current position of the pitch servo
   int lastAngle = pitchServoVal;
   int nodAngle = startAngle + 60; // Angle for nodding motion
@@ -649,78 +705,91 @@ void shakeHeadNo(int moves = 3)
   }
 }
 
-void leftMove(int moves)
+void moveLeft(int moves)
 {
   for (int i = 0; i < moves; i++)
   {
+    Serial.println("LEFT");
     yawServo.write(yawStopSpeed + yawMoveSpeed); // adding the servo speed = 180 (full counterclockwise rotation speed)
     delay(yawPrecision);                         // stay rotating for a certain number of milliseconds
     yawServo.write(yawStopSpeed);                // stop rotating
     delay(5);                                    // delay for smoothness
-    Serial.println("LEFT");
   }
 }
 
-void rightMove(int moves)
+void moveRight(int moves)
 {
   for (int i = 0; i < moves; i++)
   {
+    Serial.println("RIGHT");
     yawServo.write(yawStopSpeed - yawMoveSpeed); // subtracting the servo speed = 0 (full clockwise rotation speed)
     delay(yawPrecision);
     yawServo.write(yawStopSpeed);
     delay(5);
-    Serial.println("RIGHT");
   }
 }
 
-void upMove(int moves)
+void moveUp(int moves)
 {
   for (int i = 0; i < moves; i++)
   {
     if (pitchServoVal > pitchMin)
     {                                                 // make sure the servo is within rotation limits (greater than 10 degrees by default)
+      Serial.println("UP");
       pitchServoVal = pitchServoVal - pitchMoveSpeed; // decrement the current angle and update
       pitchServo.write(pitchServoVal);
       delay(50);
-      Serial.println("UP");
     }
   }
 }
 
-void downMove(int moves)
+void moveDown(int moves)
 {
   for (int i = 0; i < moves; i++)
   {
     if (pitchServoVal < pitchMax)
     {                                                 // make sure the servo is within rotation limits (less than 175 degrees by default)
+      Serial.println("DOWN");
       pitchServoVal = pitchServoVal + pitchMoveSpeed; // increment the current angle and update
       pitchServo.write(pitchServoVal);
       delay(50);
-      Serial.println("DOWN");
     }
   }
 }
 
 void fire()
 {                                                 // function for firing a single dart
+  Serial.println("FIRING");
   rollServo.write(rollStopSpeed + rollMoveSpeed); // start rotating the servo
   delay(rollPrecision);                           // time for approximately 60 degrees of rotation
   rollServo.write(rollStopSpeed);                 // stop rotating the servo
   delay(5);                                       // delay for smoothness
-  Serial.println("FIRING");
 }
 
 void fireAll()
 {                                                 // function to fire all 6 darts at once
+  Serial.println("FIRING ALL");
   rollServo.write(rollStopSpeed + rollMoveSpeed); // start rotating the servo
   delay(rollPrecision * 6);                       // time for 360 degrees of rotation
   rollServo.write(rollStopSpeed);                 // stop rotating the servo
   delay(5);                                       // delay for smoothness
-  Serial.println("FIRING ALL");
+}
+
+/// @brief Shoot around aimlessly.
+void yosemiteSam()
+{
+  // Ready, fire, aim!
+  Serial.print("FIRE AIMLESSLY");
+  rollServo.write(rollStopSpeed + rollMoveSpeed); // start rotating the servo
+  Serial.println(" AND SPIN");
+  moveLeft(7);
+  rollServo.write(rollStopSpeed); // stop rotating the servo
+  delay(5);                       // delay for smoothness
 }
 
 void homeServos()
 {
+  Serial.println("HOMING");
   yawServo.write(yawStopSpeed); // setup YAW servo to be STOPPED (90)
   delay(20);
   rollServo.write(rollStopSpeed); // setup ROLL servo to be STOPPED (90)
@@ -728,5 +797,193 @@ void homeServos()
   pitchServo.write(100); // set PITCH servo to 100 degree position
   delay(100);
   pitchServoVal = 100; // store the pitch servo value
-  Serial.println("HOMING");
+}
+
+void webServerHandle_OnRoot()
+{
+  Serial.println("/");
+  webServer.send(200, "text/html", SendHTML()); 
+}
+
+void webServerHandle_NotFound()
+{
+  Serial.println("NotFound");
+  webServer.send(404, "text/plain", "Not found");
+}
+
+void webServerHandle_moveUp()
+{
+    Serial.println("Handling moveUp");
+    handleCommand_moveUp();
+    webServer.send(200, "text/html", SendHTML());
+}
+
+void webServerHandle_moveDown()
+{
+    Serial.println("Handling moveDown");
+    handleCommand_moveDown();
+    webServer.send(200, "text/html", SendHTML());
+}
+
+void webServerHandle_moveLeft()
+{
+    Serial.println("Handling moveLeft");
+    handleCommand_moveLeft();
+    webServer.send(200, "text/html", SendHTML());
+}
+
+void webServerHandle_moveRight()
+{
+    Serial.println("Handling moveRight");
+    handleCommand_moveRight();
+    webServer.send(200, "text/html", SendHTML());
+}
+
+void webServerHandle_fire()
+{
+    Serial.println("Handling fire");
+    handleCommand_fire();
+    webServer.send(200, "text/html", SendHTML());
+}
+
+void webServerHandle_fireAll()
+{
+    Serial.println("Handling fireAll");
+    handleCommand_fireAll();
+    webServer.send(200, "text/html", SendHTML());
+}
+
+void webServerHandle_shakeHeadNo()
+{
+    Serial.println("Handling shakeHeadNo");
+    handleCommand_shakeHeadNo();
+    webServer.send(200, "text/html", SendHTML());
+}
+
+void webServerHandle_shakeHeadYes()
+{
+    Serial.println("Handling shakeHeadYes");
+    handleCommand_shakeHeadYes();
+    webServer.send(200, "text/html", SendHTML());
+}
+
+void webServerHandle_yosemiteSam()
+{
+    Serial.println("Handling yosemiteSam");
+    handleCommand_yosemiteSam();
+    webServer.send(200, "text/html", SendHTML());
+}
+
+void webServerHandle_toggleComputerVision()
+{
+    Serial.printf("Handling toggleComputerVision (Setting to %s)\n", computerVisionOn ? "false" : "true");
+    computerVisionOn = !computerVisionOn;
+
+    // If computer vision was just toggled on, reset timer so it is used in the very next loop.
+    if (computerVisionOn)
+      previousMillis = 0;
+
+    webServer.send(200, "text/html", SendHTML());
+}
+
+void handleCommand_moveUp()
+{
+  moveUp(1);
+}
+
+void handleCommand_moveDown()
+{
+  moveDown(1);
+}
+
+void handleCommand_moveLeft()
+{
+  moveLeft(1);
+}
+
+void handleCommand_moveRight()
+{
+  moveRight(1);
+}
+
+void handleCommand_fire()
+{
+  fire();
+}
+
+void handleCommand_fireAll()
+{
+  fireAll();
+  delay(50);
+}
+
+void handleCommand_shakeHeadNo()
+{
+  shakeHeadNo(3);
+  delay(50);
+}
+
+void handleCommand_shakeHeadYes()
+{
+  shakeHeadYes(3);
+  delay(50);
+}
+
+void handleCommand_yosemiteSam()
+{
+  yosemiteSam();
+}
+
+String SendHTML()
+{
+  String htmlString = "<!DOCTYPE html> <html>\n";
+  htmlString += "<head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, user-scalable=no\">\n";
+  htmlString += "<title>Turret Control</title>\n";
+  htmlString += "<style>html { font-family: Helvetica; display: inline-block; margin: 0px auto; text-align: center;}\n";
+  htmlString += "body{margin-top: 50px;} h1 {color: #444444;margin: 50px auto 30px;} h3 {color: #444444;margin-bottom: 50px;}\n";
+  htmlString += ".button {display: block;width: 80px;background-color: #3498db;border: none;color: white;padding: 5px 10px;text-decoration: none;font-size: 25px;margin: 0px auto 35px;cursor: pointer;border-radius: 4px;}\n";
+  htmlString += ".button-move {background-color: #3498db;}\n";
+  htmlString += ".button-fire {background-color: #ff3333;}\n"; // Shade of red
+  htmlString += ".button-fire-all {background-color: #e40000;}\n"; // Darker shade of red
+  htmlString += ".button-yosemite-sam {background-color: #bb0000;}\n"; // Even darker shade of red
+  htmlString += ".button-neutral {background-color: #71a6c9;}\n";
+  // htmlString += ".button-on:active {background-color: #2980b9;}\n";
+  // htmlString += ".button-off {background-color: #34495e;}\n";
+  // htmlString += ".button-off:active {background-color: #2c3e50;}\n";
+  htmlString += "p {font-size: 14px;color: #888;margin-bottom: 10px;}\n";
+  htmlString += "</style>\n";
+  htmlString += "</head>\n";
+  htmlString += "<body>\n";
+  htmlString += "<h1>Turret Control</h1>\n";
+  
+  htmlString += "<p>\n";
+  htmlString += "<a class=\"button button-move\" href=\"/moveUp\">Move Up</a>\n";
+  htmlString += "<a class=\"button button-move\" href=\"/moveDown\">Move Down</a>\n";
+  htmlString += "<a class=\"button button-move\" href=\"/moveLeft\">Move Left</a>\n";
+  htmlString += "<a class=\"button button-move\" href=\"/moveRight\">Move Right</a>\n";
+  htmlString += "</p>\n";
+
+  htmlString += "<p>\n";
+  htmlString += "<a class=\"button button-fire\" href=\"/fire\">Fire</a>\n";
+  htmlString += "<a class=\"button button-fire-all\" href=\"/fireAll\">Fire All</a>\n";
+  htmlString += "<a class=\"button button-yosemite-sam\" href=\"/yosemiteSam\">Sam</a>\n";
+  htmlString += "</p>\n";
+
+  htmlString += "<p>\n";
+  htmlString += "<a class=\"button button-neutral\" href=\"/shakeHeadNo\">Shake No</a>\n";
+  htmlString += "<a class=\"button button-neutral\" href=\"/shakeHeadYes\">Nod Yes</a>\n";
+  htmlString += "</p>\n";
+
+  if (computerVisionOn)
+  {
+    htmlString += "<p>Compuer Vision On</p><a class=\"button button-neutral\" href=\"/toggleComputerVision\">Off</a>\n";
+  }
+  else
+  {
+    htmlString += "<p>Compuer Vision Off</p><a class=\"button button-neutral\" href=\"/toggleComputerVision\">On</a>\n";
+  }
+
+  htmlString += "</body>\n";
+  htmlString += "</html>\n";
+  return htmlString;
 }
