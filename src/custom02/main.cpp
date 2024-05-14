@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <ArduinoOTA.h>
 #include <ESP32Servo.h>
 #include <IRremote.hpp>
 #include <WiFi.h>
@@ -93,10 +94,6 @@ String myTimezone = "CST6CDT,M3.2.0,M11.1.0";
 #define star 0x16
 #define hashtag 0xD
 
-//////////////////////////////////////////////////
-//  PINS AND PARAMETERS  //
-//////////////////////////////////////////////////
-// this is where we store global variables!
 Servo yawServo;   // names the servo responsible for YAW rotation, 360 spin around the base
 Servo pitchServo; // names the servo responsible for PITCH rotation, up and down tilt
 Servo rollServo;  // names the servo responsible for ROLL rotation, spins the barrel to fire darts
@@ -131,6 +128,54 @@ void fire();
 void fireAll();
 void homeServos();
 
+void initOTA()
+{
+  // Port defaults to 3232
+  // ArduinoOTA.setPort(3232);
+
+  // Hostname defaults to esp3232-[MAC]
+  ArduinoOTA.setHostname("esp32-c3-polka");
+
+  // No authentication by default
+  // ArduinoOTA.setPassword("admin");
+
+  // Password can be set with it's md5 value as well
+  // MD5(admin) = 21232f297a57a5a743894a0e4a801fc3
+  // ArduinoOTA.setPasswordHash("21232f297a57a5a743894a0e4a801fc3");
+  ArduinoOTA.setTimeout(10000);
+
+  ArduinoOTA
+      .onStart([]()
+               {
+      Serial.println("OTA update starting.");
+
+      Serial.println("Stopping AudioTools copier.");
+      copier.end();
+
+      String type;
+      if (ArduinoOTA.getCommand() == U_FLASH)
+        type = "sketch";
+      else // U_SPIFFS
+        type = "filesystem";
+
+      // NOTE: if updating SPIFFS this would be the place to unmount SPIFFS using SPIFFS.end()
+      Serial.println("Start updating " + type); })
+      .onEnd([]()
+             { Serial.println("\nEnd"); })
+      .onProgress([](unsigned int progress, unsigned int total)
+                  { Serial.printf("Progress: %u%%\r", (progress / (total / 100))); })
+      .onError([](ota_error_t error)
+               {
+      Serial.printf("Error[%u]: ", error);
+      if (error == OTA_AUTH_ERROR) Serial.println("Auth Failed");
+      else if (error == OTA_BEGIN_ERROR) Serial.println("Begin Failed");
+      else if (error == OTA_CONNECT_ERROR) Serial.println("Connect Failed");
+      else if (error == OTA_RECEIVE_ERROR) Serial.println("Receive Failed");
+      else if (error == OTA_END_ERROR) Serial.println("End Failed"); });
+
+  ArduinoOTA.begin();
+}
+
 // Initializes the camera
 void configInitCamera()
 {
@@ -160,7 +205,7 @@ void configInitCamera()
   config.jpeg_quality = 12;
   config.fb_count = 1;
 
-   // if PSRAM IC present, init with UXGA resolution and higher JPEG quality
+  // if PSRAM IC present, init with UXGA resolution and higher JPEG quality
   // for larger pre-allocated frame buffer.
   if(psramFound()){
     config.jpeg_quality = 10;
@@ -172,11 +217,6 @@ void configInitCamera()
     config.fb_location = CAMERA_FB_IN_DRAM;
   }
 
-  // Serial.println("Setting camera for lower quality. (FRAMESIZE_VGA)");
-  // config.frame_size = FRAMESIZE_VGA;
-  // config.jpeg_quality = 18;
-  // config.fb_count = 1;
-
   // Initialize the Camera
   esp_err_t err = esp_camera_init(&config);
   if (err != ESP_OK)
@@ -187,7 +227,7 @@ void configInitCamera()
 
   sensor_t * s = esp_camera_sensor_get();
   // initial sensors are flipped vertically and colors are a bit saturated
-  //s->set_vflip(s, 1); // flip it back
+  // s->set_vflip(s, 1); // flip it back
   s->set_brightness(s, 1); // up the brightness just a bit
   s->set_saturation(s, 0); // lower the saturation
 }
@@ -393,13 +433,9 @@ void takePhotoAndSave()
   Serial.println("\ntakePhotoAndSave(): End");
 }
 
-//////////////////////////////////////////////////
-//  S E T U P  //
-//////////////////////////////////////////////////
+// Setup
 void setup()
 {
-  // https://www.instructables.com/ESP32-CAM-Take-Photo-and-Save-to-MicroSD-Card-With/
-
   Serial.begin(115200); // initializes the Serial communication between the computer and the microcontroller
 
   delay(2000);
@@ -408,19 +444,6 @@ void setup()
 
   // initialize digital pin LED_PIN as an output
   pinMode(LED_PIN, OUTPUT);
-
-  // // Blink thrice to indicate status
-  // digitalWrite(LED_PIN, HIGH);
-  // delay(100);
-  // digitalWrite(LED_PIN, LOW);
-  // delay(100);
-  // digitalWrite(LED_PIN, HIGH);
-  // delay(100);
-  // digitalWrite(LED_PIN, LOW);
-  // delay(100);
-  // digitalWrite(LED_PIN, HIGH);
-  // delay(100);
-  // digitalWrite(LED_PIN, LOW);
 
   // Initialize Wi-Fi
   Serial.println("\nInitializing wifi...");
@@ -461,10 +484,7 @@ void setup()
   Serial.println("Done homing servos.");
 }
 
-////////////////////////////////////////////////
-//  L O O P  //
-////////////////////////////////////////////////
-
+// Loop
 void loop()
 {
   unsigned long currentMillis = millis();
@@ -487,14 +507,10 @@ void loop()
     digitalWrite(LED_PIN, LOW);
   }
 
-  /*
-   * Check if received data is available and if yes, try to decode it.
-   */
+  // Check if received data is available and if yes, try to decode it.
   if (IrReceiver.decode())
   {
-    /*
-     * Print a short summary of received data
-     */
+    // Print a short summary of received data
     IrReceiver.printIRResultShort(&Serial);
     IrReceiver.printIRSendUsage(&Serial);
     if (IrReceiver.decodedIRData.protocol == UNKNOWN)
@@ -505,58 +521,53 @@ void loop()
     }
     Serial.println();
 
-    /*
-     * !!!Important!!! Enable receiving of the next value,
-     * since receiving has stopped after the end of the current received data packet.
-     */
+    // !!!Important!!! Enable receiving of the next value,
+    // since receiving has stopped after the end of the current received data packet.
     IrReceiver.resume(); // Enable receiving of the next value
 
-    /*
-     * Finally, check the received data and perform actions according to the received command
-     */
-
+    // Finally, check the received data and perform actions according to the received command
+    // this is where the commands are handled
     switch (IrReceiver.decodedIRData.command)
-    { // this is where the commands are handled
+    {
+      case up: // pitch up
+        upMove(1);
+        break;
 
-    case up: // pitch up
-      upMove(1);
-      break;
+      case down: // pitch down
+        downMove(1);
+        break;
 
-    case down: // pitch down
-      downMove(1);
-      break;
+      case left: // fast counterclockwise rotation
+        leftMove(1);
+        break;
 
-    case left: // fast counterclockwise rotation
-      leftMove(1);
-      break;
+      case right: // fast clockwise rotation
+        rightMove(1);
+        break;
 
-    case right: // fast clockwise rotation
-      rightMove(1);
-      break;
+      case ok: // firing routine
+        fire();
+        // Serial.println("FIRE");
+        break;
 
-    case ok: // firing routine
-      fire();
-      // Serial.println("FIRE");
-      break;
+      case star:
+        fireAll();
+        delay(50);
+        break;
 
-    case star:
-      fireAll();
-      delay(50);
-      break;
+      case cmd0:
+        shakeHeadNo(3);
+        delay(50);
+        break;
 
-    case cmd0:
-      shakeHeadNo(3);
-      delay(50);
-      break;
+      case cmd9:
+        shakeHeadYes(3);
+        delay(50);
+        break;
 
-    case cmd9:
-      shakeHeadYes(3);
-      delay(50);
-      break;
-
-    case cmd7:
-      yosemiteSam();
-      break;
+      case cmd7:
+        yosemiteSam();
+        break;
     }
   }
   delay(5);
@@ -580,20 +591,25 @@ void shakeHeadYes(int moves = 3)
   int nodAngle = startAngle + 20; // Angle for nodding motion
 
   for (int i = 0; i < moves; i++)
-  { // Repeat nodding motion three times
+  {
+    // Repeat nodding motion three times
+
     // Nod up
     for (int angle = startAngle; angle <= nodAngle; angle++)
     {
       pitchServo.write(angle);
       delay(7); // Adjust delay for smoother motion
     }
+
     delay(50); // Pause at nodding position
+
     // Nod down
     for (int angle = nodAngle; angle >= startAngle; angle--)
     {
       pitchServo.write(angle);
       delay(7); // Adjust delay for smoother motion
     }
+
     delay(50); // Pause at starting position
   }
 }
@@ -606,7 +622,8 @@ void shakeHeadNo(int moves = 3)
   int nodAngle = startAngle + 60; // Angle for nodding motion
 
   for (int i = 0; i < moves; i++)
-  { // Repeat nodding motion three times
+  {
+    // Repeat nodding motion three times
     // rotate right, stop, then rotate left, stop
     yawServo.write(140);
     delay(190); // Adjust delay for smoother motion
@@ -632,7 +649,7 @@ void leftMove(int moves)
 }
 
 void rightMove(int moves)
-{ // function to move right
+{
   for (int i = 0; i < moves; i++)
   {
     yawServo.write(yawStopSpeed - yawMoveSpeed); // subtracting the servo speed = 0 (full clockwise rotation speed)
@@ -671,9 +688,6 @@ void downMove(int moves)
   }
 }
 
-/**
- * fire does xyz
- */
 void fire()
 {                                                 // function for firing a single dart
   rollServo.write(rollStopSpeed + rollMoveSpeed); // start rotating the servo
