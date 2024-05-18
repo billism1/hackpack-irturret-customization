@@ -1,0 +1,98 @@
+<html>
+    <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+        <title>Turret Control</title>
+        <style>html { font-family: Helvetica; display: inline-block; margin: 0px auto; text-align: center;}
+            body{margin-top: 50px;} h1 {color: #444444; margin: 50px auto 30px;} h3 {color: #444444;margin-bottom: 50px;}
+            .button {
+                display: flex; /* Use flexbox */
+                justify-content: center; /* Center content horizontally */
+                align-items: center; /* Center content vertically */
+                width: 100px;
+                height: 75px; /* Allow button height to adjust based on content */
+                background-color: #3498db;
+                border: none;
+                color: white;
+                padding: 5px 10px;
+                text-decoration: none;
+                font-size: 25px;
+                margin: 0px auto 0px;
+                cursor: pointer;
+                border-radius: 4px;
+                text-align: center; /* Center-align text */
+            }
+            .button-move {background-color: #3498db;}
+            .button-fire {background-color: #ff3333;}
+            .button-fire-all {background-color: #e40000;}
+            .button-yosemite-sam {background-color: #bb0000;}
+            .button-neutral {background-color: #71a6c9;}
+            p {font-size: 14px;color: #888;margin-bottom: 10px;}
+        </style>
+    </head>
+    <body>
+        <h1>Turret Control</h1>
+        <p>
+            <table>
+                <tr>
+                    <td>&nbsp;</td>
+                    <td>
+                        <a class="button button-move" href="/moveUp">Move Up</a>
+                    </td>
+                    <td>&nbsp;</td>
+                </tr>
+                <tr>
+                    <td>
+                        <a class="button button-move" href="/moveLeft">Move Left</a>
+                    </td>
+                    <td>
+                        <a class="button button-fire" href="/fire">Fire</a>
+                    </td>
+                    <td>
+                        <a class="button button-move" href="/moveRight">Move Right</a>
+                    </td>
+                </tr>
+                <tr>
+                    <td>&nbsp;</td>
+                    <td>
+                        <a class="button button-move" href="/moveDown">Move Down</a>
+                    </td>
+                    <td>&nbsp;</td>
+                </tr>
+            </table>
+        </p>
+        <p>
+            <table>
+                <tr>
+                    <td>
+                        <a class="button button-fire-all" href="/fireAll">Fire All</a>
+                    </td>
+                    <td>&nbsp;</td>
+                    <td>
+                        <a class="button button-yosemite-sam" href="/yosemiteSam">Yosemite Sam</a>
+                    </td>
+                </tr>
+                <tr>
+                    <td>&nbsp;</td>
+                    <td>&nbsp;</td>
+                    <td>&nbsp;</td>
+                </tr>
+                <tr>
+                    <td>
+                        <a class="button button-neutral" href="/shakeHeadNo">Shake No</a>
+                    </td>
+                    <td>&nbsp;</td>
+                    <td>
+                        <a class="button button-neutral" href="/shakeHeadYes">Nod Yes</a>
+                    </td>
+                </tr>
+                <tr>
+                    <td>&nbsp;</td>
+                    <td>
+                        <p>Compuer Vision Off</p><a class="button button-neutral" href="/toggleComputerVision">On</a>
+                    </td>
+                    <td>&nbsp;</td>
+                </tr>
+            </table>
+        </p>
+    </body>
+</html>
