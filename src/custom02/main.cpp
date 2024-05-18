@@ -83,8 +83,8 @@ String myTimezone = "CST6CDT,M3.2.0,M11.1.0";
 // defines the specific command code for each button on the remote
 #define left 0x8
 #define right 0x5A
-#define up 0x52
-#define down 0x18
+#define up 0x18
+#define down 0x52
 #define ok 0x1C
 #define cmd1 0x45
 #define cmd2 0x46
@@ -729,13 +729,13 @@ void moveRight(int moves)
   }
 }
 
-void moveUp(int moves)
+void moveDown(int moves)
 {
   for (int i = 0; i < moves; i++)
   {
     if (pitchServoVal > pitchMin)
     {                                                 // make sure the servo is within rotation limits (greater than 10 degrees by default)
-      Serial.println("UP");
+      Serial.println("DOWN");
       pitchServoVal = pitchServoVal - pitchMoveSpeed; // decrement the current angle and update
       pitchServo.write(pitchServoVal);
       delay(50);
@@ -743,13 +743,13 @@ void moveUp(int moves)
   }
 }
 
-void moveDown(int moves)
+void moveUp(int moves)
 {
   for (int i = 0; i < moves; i++)
   {
     if (pitchServoVal < pitchMax)
     {                                                 // make sure the servo is within rotation limits (less than 175 degrees by default)
-      Serial.println("DOWN");
+      Serial.println("UP");
       pitchServoVal = pitchServoVal + pitchMoveSpeed; // increment the current angle and update
       pitchServo.write(pitchServoVal);
       delay(50);
@@ -936,54 +936,124 @@ void handleCommand_yosemiteSam()
 
 String SendHTML()
 {
-  String htmlString = "<!DOCTYPE html> <html>\n";
-  htmlString += "<head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, user-scalable=no\">\n";
-  htmlString += "<title>Turret Control</title>\n";
-  htmlString += "<style>html { font-family: Helvetica; display: inline-block; margin: 0px auto; text-align: center;}\n";
-  htmlString += "body{margin-top: 50px;} h1 {color: #444444;margin: 50px auto 30px;} h3 {color: #444444;margin-bottom: 50px;}\n";
-  htmlString += ".button {display: block;width: 80px;background-color: #3498db;border: none;color: white;padding: 5px 10px;text-decoration: none;font-size: 25px;margin: 0px auto 35px;cursor: pointer;border-radius: 4px;}\n";
-  htmlString += ".button-move {background-color: #3498db;}\n";
-  htmlString += ".button-fire {background-color: #ff3333;}\n"; // Shade of red
-  htmlString += ".button-fire-all {background-color: #e40000;}\n"; // Darker shade of red
-  htmlString += ".button-yosemite-sam {background-color: #bb0000;}\n"; // Even darker shade of red
-  htmlString += ".button-neutral {background-color: #71a6c9;}\n";
-  // htmlString += ".button-on:active {background-color: #2980b9;}\n";
-  // htmlString += ".button-off {background-color: #34495e;}\n";
-  // htmlString += ".button-off:active {background-color: #2c3e50;}\n";
-  htmlString += "p {font-size: 14px;color: #888;margin-bottom: 10px;}\n";
-  htmlString += "</style>\n";
-  htmlString += "</head>\n";
-  htmlString += "<body>\n";
-  htmlString += "<h1>Turret Control</h1>\n";
-  
-  htmlString += "<p>\n";
-  htmlString += "<a class=\"button button-move\" href=\"/moveUp\">Move Up</a>\n";
-  htmlString += "<a class=\"button button-move\" href=\"/moveDown\">Move Down</a>\n";
-  htmlString += "<a class=\"button button-move\" href=\"/moveLeft\">Move Left</a>\n";
-  htmlString += "<a class=\"button button-move\" href=\"/moveRight\">Move Right</a>\n";
-  htmlString += "</p>\n";
-
-  htmlString += "<p>\n";
-  htmlString += "<a class=\"button button-fire\" href=\"/fire\">Fire</a>\n";
-  htmlString += "<a class=\"button button-fire-all\" href=\"/fireAll\">Fire All</a>\n";
-  htmlString += "<a class=\"button button-yosemite-sam\" href=\"/yosemiteSam\">Sam</a>\n";
-  htmlString += "</p>\n";
-
-  htmlString += "<p>\n";
-  htmlString += "<a class=\"button button-neutral\" href=\"/shakeHeadNo\">Shake No</a>\n";
-  htmlString += "<a class=\"button button-neutral\" href=\"/shakeHeadYes\">Nod Yes</a>\n";
-  htmlString += "</p>\n";
+  std::string htmlString = R"(
+  <!DOCTYPE html>
+  <html>
+      <head>
+          <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+          <title>Turret Control</title>
+          <style>html { font-family: Helvetica; display: inline-block; margin: 0px auto; text-align: center;}
+              body{margin-top: 50px;} h1 {color: #444444; margin: 50px auto 30px;} h3 {color: #444444;margin-bottom: 50px;}
+              .button {
+                  display: flex; /* Use flexbox */
+                  justify-content: center; /* Center content horizontally */
+                  align-items: center; /* Center content vertically */
+                  width: 100px;
+                  height: 75px; /* Allow button height to adjust based on content */
+                  background-color: #3498db;
+                  border: none;
+                  color: white;
+                  padding: 5px 10px;
+                  text-decoration: none;
+                  font-size: 25px;
+                  margin: 0px auto 0px;
+                  cursor: pointer;
+                  border-radius: 4px;
+                  text-align: center; /* Center-align text */
+              }
+              .button-move {background-color: #3498db;}
+              .button-fire {background-color: #ff3333;}
+              .button-fire-all {background-color: #e40000;}
+              .button-yosemite-sam {background-color: #bb0000;}
+              .button-neutral {background-color: #71a6c9;}
+              p {font-size: 14px;color: #888;margin-bottom: 10px;}
+          </style>
+      </head>
+      <body>
+          <h1>Turret Control</h1>
+          <p>
+              <table>
+                  <tr>
+                      <td>&nbsp;</td>
+                      <td>
+                          <a class="button button-move" href="/moveUp">Move Up</a>
+                      </td>
+                      <td>&nbsp;</td>
+                  </tr>
+                  <tr>
+                      <td>
+                          <a class="button button-move" href="/moveLeft">Move Left</a>
+                      </td>
+                      <td>
+                          <a class="button button-fire" href="/fire">Fire</a>
+                      </td>
+                      <td>
+                          <a class="button button-move" href="/moveRight">Move Right</a>
+                      </td>
+                  </tr>
+                  <tr>
+                      <td>&nbsp;</td>
+                      <td>
+                          <a class="button button-move" href="/moveDown">Move Down</a>
+                      </td>
+                      <td>&nbsp;</td>
+                  </tr>
+              </table>
+          </p>
+          <p>
+              <table>
+                  <tr>
+                      <td>
+                          <a class="button button-fire-all" href="/fireAll">Fire All</a>
+                      </td>
+                      <td>&nbsp;</td>
+                      <td>
+                          <a class="button button-yosemite-sam" href="/yosemiteSam">Yosemite Sam</a>
+                      </td>
+                  </tr>
+                  <tr>
+                      <td>&nbsp;</td>
+                      <td>&nbsp;</td>
+                      <td>&nbsp;</td>
+                  </tr>
+                  <tr>
+                      <td>
+                          <a class="button button-neutral" href="/shakeHeadNo">Shake No</a>
+                      </td>
+                      <td>&nbsp;</td>
+                      <td>
+                          <a class="button button-neutral" href="/shakeHeadYes">Nod Yes</a>
+                      </td>
+                  </tr>
+                  <tr>
+                      <td>&nbsp;</td>
+                      <td>
+  )";
 
   if (computerVisionOn)
   {
-    htmlString += "<p>Compuer Vision On</p><a class=\"button button-neutral\" href=\"/toggleComputerVision\">Off</a>\n";
+      htmlString += R"(
+                          <p>Compuer Vision On</p>
+                          <a class="button button-neutral" href="/toggleComputerVision">Off</a>
+      )";
   }
   else
   {
-    htmlString += "<p>Compuer Vision Off</p><a class=\"button button-neutral\" href=\"/toggleComputerVision\">On</a>\n";
+      htmlString += R"(
+                          <p>Compuer Vision Off</p>
+                          <a class="button button-neutral" href="/toggleComputerVision">On</a>
+      )";
   }
 
-  htmlString += "</body>\n";
-  htmlString += "</html>\n";
-  return htmlString;
+  htmlString += R"(
+                      </td>
+                      <td>&nbsp;</td>
+                  </tr>
+              </table>
+          </p>
+      </body>
+  </html>
+  )";
+
+  return htmlString.c_str();
 }
