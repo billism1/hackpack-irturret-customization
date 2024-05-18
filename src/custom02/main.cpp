@@ -6,8 +6,11 @@
 #include <WebServer.h>
 #include <HTTPClient.h>
 #include <base64.h>
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "freertos/semphr.h"
 #include "esp_camera.h"
-#include "SD_MMC.h"           // SD Card ESP32
+#include "SD_MMC.h" // SD Card ESP32
 
 const char *networkHostname = "turret_mod";
 
@@ -21,8 +24,11 @@ const char *password = "***";
 // https://learn.microsoft.com/en-us/azure/ai-services/computer-vision/how-to/call-analyze-image-40?tabs=csharp&pivots=programming-language-csharp
 // https://learn.microsoft.com/en-us/azure/ai-services/computer-vision/quickstarts-sdk/image-analysis-client-library-40?tabs=visual-studio%2Cwindows&pivots=programming-language-rest-api
 
-const char* computerVisionEndpoint = "https://***.cognitiveservices.azure.com/computervision/imageanalysis:analyze?features=caption,denseCaptions,read,objects,people&model-version=latest&language=en&api-version=2024-02-01";
+const char *computerVisionEndpoint = "https://***.cognitiveservices.azure.com/computervision/imageanalysis:analyze?features=caption,denseCaptions,read,objects,people&model-version=latest&language=en&api-version=2024-02-01";
 const char *computerVisionApiKey = "***";
+
+// Declare a mutex handle
+SemaphoreHandle_t turretMovementMutex;
 
 bool computerVisionOn = false;
 
@@ -35,20 +41,20 @@ String myTimezone = "CST6CDT,M3.2.0,M11.1.0";
 // ===================
 // Select camera model
 // ===================
-//#define CAMERA_MODEL_WROVER_KIT // Has PSRAM
-//#define CAMERA_MODEL_ESP_EYE // Has PSRAM
+// #define CAMERA_MODEL_WROVER_KIT // Has PSRAM
+// #define CAMERA_MODEL_ESP_EYE // Has PSRAM
 #define CAMERA_MODEL_ESP32S3_EYE // Has PSRAM
-//#define CAMERA_MODEL_M5STACK_PSRAM // Has PSRAM
-//#define CAMERA_MODEL_M5STACK_V2_PSRAM // M5Camera version B Has PSRAM
-//#define CAMERA_MODEL_M5STACK_WIDE // Has PSRAM
-//#define CAMERA_MODEL_M5STACK_ESP32CAM // No PSRAM
-//#define CAMERA_MODEL_M5STACK_UNITCAM // No PSRAM
-//#define CAMERA_MODEL_AI_THINKER // Has PSRAM
-//#define CAMERA_MODEL_TTGO_T_JOURNAL // No PSRAM
-// ** Espressif Internal Boards **
-//#define CAMERA_MODEL_ESP32_CAM_BOARD
-//#define CAMERA_MODEL_ESP32S2_CAM_BOARD
-//#define CAMERA_MODEL_ESP32S3_CAM_LCD
+// #define CAMERA_MODEL_M5STACK_PSRAM // Has PSRAM
+// #define CAMERA_MODEL_M5STACK_V2_PSRAM // M5Camera version B Has PSRAM
+// #define CAMERA_MODEL_M5STACK_WIDE // Has PSRAM
+// #define CAMERA_MODEL_M5STACK_ESP32CAM // No PSRAM
+// #define CAMERA_MODEL_M5STACK_UNITCAM // No PSRAM
+// #define CAMERA_MODEL_AI_THINKER // Has PSRAM
+// #define CAMERA_MODEL_TTGO_T_JOURNAL // No PSRAM
+//  ** Espressif Internal Boards **
+// #define CAMERA_MODEL_ESP32_CAM_BOARD
+// #define CAMERA_MODEL_ESP32S2_CAM_BOARD
+// #define CAMERA_MODEL_ESP32S3_CAM_LCD
 
 #include "camera_pins.h"
 
@@ -76,9 +82,9 @@ String myTimezone = "CST6CDT,M3.2.0,M11.1.0";
 */
 
 // SD Card pins
-#define SD_MMC_CMD 38 //Please do not modify it.
-#define SD_MMC_CLK 39 //Please do not modify it. 
-#define SD_MMC_D0  40 //Please do not modify it.
+#define SD_MMC_CMD 38 // Please do not modify it.
+#define SD_MMC_CLK 39 // Please do not modify it.
+#define SD_MMC_D0 40  // Please do not modify it.
 
 // defines the specific command code for each button on the remote
 #define left 0x8
@@ -170,7 +176,7 @@ void initOTA()
 
   ArduinoOTA
       .onStart([]()
-      {
+               {
         Serial.println("OTA update starting.");
 
         String type;
@@ -180,25 +186,19 @@ void initOTA()
           type = "filesystem";
 
         // NOTE: if updating SPIFFS this would be the place to unmount SPIFFS using SPIFFS.end()
-        Serial.println("Start updating " + type);
-      })
+        Serial.println("Start updating " + type); })
       .onEnd([]()
-      {
-        Serial.println("\nEnd");
-      })
+             { Serial.println("\nEnd"); })
       .onProgress([](unsigned int progress, unsigned int total)
-      {
-        Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
-      })
+                  { Serial.printf("Progress: %u%%\r", (progress / (total / 100))); })
       .onError([](ota_error_t error)
-      {
+               {
         Serial.printf("Error[%u]: ", error);
         if (error == OTA_AUTH_ERROR) Serial.println("Auth Failed");
         else if (error == OTA_BEGIN_ERROR) Serial.println("Begin Failed");
         else if (error == OTA_CONNECT_ERROR) Serial.println("Connect Failed");
         else if (error == OTA_RECEIVE_ERROR) Serial.println("Receive Failed");
-        else if (error == OTA_END_ERROR) Serial.println("End Failed");
-      });
+        else if (error == OTA_END_ERROR) Serial.println("End Failed"); });
 
   ArduinoOTA.begin();
 }
@@ -234,11 +234,14 @@ void configInitCamera()
 
   // if PSRAM IC present, init with UXGA resolution and higher JPEG quality
   // for larger pre-allocated frame buffer.
-  if(psramFound()){
+  if (psramFound())
+  {
     config.jpeg_quality = 10;
     config.fb_count = 2;
     config.grab_mode = CAMERA_GRAB_LATEST;
-  } else {
+  }
+  else
+  {
     // Limit the frame size when PSRAM is not available
     config.frame_size = FRAMESIZE_SVGA;
     config.fb_location = CAMERA_FB_IN_DRAM;
@@ -252,7 +255,7 @@ void configInitCamera()
     return;
   }
 
-  sensor_t * s = esp_camera_sensor_get();
+  sensor_t *s = esp_camera_sensor_get();
   // initial sensors are flipped vertically and colors are a bit saturated
   // s->set_vflip(s, 1); // flip it back
   s->set_brightness(s, 1); // up the brightness just a bit
@@ -415,7 +418,7 @@ void takePhotoAndSave()
   esp_camera_fb_return(fb);
 
   // Send to Azure Cognitive Services
-  
+
   Serial.println("Opening file to send to Azure Cognitive Services...");
 
   // Open the image file
@@ -481,6 +484,167 @@ void takePhotoAndSave()
   Serial.println("\ntakePhotoAndSave(): End");
 }
 
+// Function type definition
+typedef void (*FunctionPtr)();
+
+/// @brief To move the turret/servos, call this function to prevent attempting to move the turret/servos from more than 1 task simultaneously.
+/// @param func The function performing the turret/servos movements.
+void safeTurretMove(FunctionPtr func)
+{
+  if (xSemaphoreTake(turretMovementMutex, portMAX_DELAY))
+  {
+    func();
+    xSemaphoreGive(turretMovementMutex);
+  }
+}
+
+/// @brief Task for checking for and handling any web server requests.
+/// @param pvParameters
+void webServerTask(void *pvParameters)
+{
+  while (true)
+  {
+    // Serial.println("\nWeb server task running");
+
+    // Check for input from web site
+    webServer.handleClient();
+
+    // Delay to allow other tasks to run
+    vTaskDelay(pdMS_TO_TICKS(5)); // Delay for 5ms
+  }
+}
+
+/// @brief Task for checking for and handling any IR (infrared) commands.
+/// @param pvParameters
+void irTask(void *pvParameters)
+{
+  while (true)
+  {
+    // Serial.println("\nIR task running");
+
+    // Check if received data is available and if yes, try to decode it.
+    // Serial.println("\nChecking IR input...");
+    if (IrReceiver.decode())
+    {
+      // Print a short summary of received data
+      IrReceiver.printIRResultShort(&Serial);
+      IrReceiver.printIRSendUsage(&Serial);
+      if (IrReceiver.decodedIRData.protocol == UNKNOWN)
+      { // command garbled or not recognized
+        Serial.println(F("Received noise or an unknown (or not yet enabled) protocol - if you wish to add this command, define it at the top of the file with the hex code printed below (ex: 0x8)"));
+        // We have an unknown protocol here, print more info
+        IrReceiver.printIRResultRawFormatted(&Serial, true);
+      }
+      Serial.println();
+
+      // !!!Important!!! Enable receiving of the next value,
+      // since receiving has stopped after the end of the current received data packet.
+      IrReceiver.resume(); // Enable receiving of the next value
+
+      // Finally, check the received data and perform actions according to the received command
+      // this is where the commands are handled
+      switch (IrReceiver.decodedIRData.command)
+      {
+      case up:
+        safeTurretMove(handleCommand_moveUp); // Pitch up
+        break;
+
+      case down:
+        safeTurretMove(handleCommand_moveDown); // Pitch down
+        break;
+
+      case left:
+        safeTurretMove(handleCommand_moveLeft);
+        break;
+
+      case right:
+        safeTurretMove(handleCommand_moveRight);
+        break;
+
+      case ok:
+        safeTurretMove(handleCommand_fire);
+        break;
+
+      case star:
+        safeTurretMove(handleCommand_fireAll);
+        break;
+
+      case cmd0:
+        safeTurretMove(handleCommand_shakeHeadNo);
+        break;
+
+      case cmd9:
+        safeTurretMove(handleCommand_shakeHeadYes);
+        break;
+
+      case cmd7:
+        safeTurretMove(handleCommand_yosemiteSam);
+        break;
+      }
+    }
+
+    // Delay to allow other tasks to run
+    vTaskDelay(pdMS_TO_TICKS(5)); // Delay for 5ms
+  }
+}
+
+/// @brief Task for checking for and handling any OTA (Over the Air) update requests.
+/// @param pvParameters
+void otaTask(void *pvParameters)
+{
+  while (true)
+  {
+    // Serial.println("\nOTA task running");
+
+    // Check for an OTA request
+    ArduinoOTA.handle();
+
+    vTaskDelay(pdMS_TO_TICKS(5)); // Delay for 5ms
+  }
+}
+
+/// @brief Task for running logic for AI services.
+/// @param pvParameters
+void aiTask(void *pvParameters)
+{
+  while (true)
+  {
+    // Serial.println("\nAI task running");
+
+    unsigned long currentMillis = millis();
+    if (currentMillis - previousMillis >= cameraInterval)
+    {
+      previousMillis = currentMillis;
+
+      if (computerVisionOn)
+      {
+        Serial.println("\nComputer vision is ON. Proceeding to take a photo...");
+
+        digitalWrite(LED_PIN, HIGH);
+        delay(100);
+        digitalWrite(LED_PIN, LOW);
+        delay(100);
+        digitalWrite(LED_PIN, HIGH);
+        delay(100);
+        digitalWrite(LED_PIN, LOW);
+
+        takePhotoAndSave();
+
+        digitalWrite(LED_PIN, HIGH);
+        delay(100);
+        digitalWrite(LED_PIN, LOW);
+      }
+      else
+      {
+        Serial.println("\nComputer vision is OFF. Skipping photo.");
+      }
+    }
+
+    // Delay to allow other tasks to run
+    vTaskDelay(pdMS_TO_TICKS(5)); // Delay for 5ms
+  }
+}
+
 // Setup
 void setup()
 {
@@ -540,114 +704,29 @@ void setup()
   Serial.println("\nHoming servos...");
   homeServos(); // set servo motors to home position
   Serial.println("Done homing servos.");
+
+  Serial.println("\nCreating mutex...");
+  turretMovementMutex = xSemaphoreCreateMutex();
+  if (turretMovementMutex == NULL)
+  {
+    Serial.println("Failed to create log mutex");
+    while (true)
+      ; // Halt if mutex creation fails
+  }
+  Serial.println("Done creating mutex.");
+
+  Serial.println("\nCreating tasks...");
+  xTaskCreate(webServerTask, "Web Server Task", 2048, NULL, 1, NULL);
+  xTaskCreate(irTask, "IR Task", 2048, NULL, 1, NULL);
+  xTaskCreate(otaTask, "OTA Task", 2048, NULL, 1, NULL);
+  xTaskCreate(aiTask, "AI Task", 2048, NULL, 1, NULL);
+  Serial.println("Done creating tasks.");
 }
 
 // Loop
 void loop()
 {
-  // Check for an OTA request
-  //Serial.println("\nChecking OTA...");
-  ArduinoOTA.handle();
-
-  // Check for input from web site
-  //Serial.println("\nChecking web input...");
-  webServer.handleClient();
-
-  unsigned long currentMillis = millis();
-  if (currentMillis - previousMillis >= cameraInterval)
-  {
-    previousMillis = currentMillis;
-
-    if (computerVisionOn)
-    {
-      Serial.println("\nComputer vision is ON. Proceeding to take a photo...");
-
-      digitalWrite(LED_PIN, HIGH);
-      delay(100);
-      digitalWrite(LED_PIN, LOW);
-      delay(100);
-      digitalWrite(LED_PIN, HIGH);
-      delay(100);
-      digitalWrite(LED_PIN, LOW);
-
-      takePhotoAndSave();
-
-      digitalWrite(LED_PIN, HIGH);
-      delay(100);
-      digitalWrite(LED_PIN, LOW);
-    }
-    else
-    {
-      Serial.println("\nComputer vision is OFF. Skipping photo.");
-    }
-  }
-
-  // Check if received data is available and if yes, try to decode it.
-  //Serial.println("\nChecking IR input...");
-  if (IrReceiver.decode())
-  {
-    // Print a short summary of received data
-    IrReceiver.printIRResultShort(&Serial);
-    IrReceiver.printIRSendUsage(&Serial);
-    if (IrReceiver.decodedIRData.protocol == UNKNOWN)
-    { // command garbled or not recognized
-      Serial.println(F("Received noise or an unknown (or not yet enabled) protocol - if you wish to add this command, define it at the top of the file with the hex code printed below (ex: 0x8)"));
-      // We have an unknown protocol here, print more info
-      IrReceiver.printIRResultRawFormatted(&Serial, true);
-    }
-    Serial.println();
-
-    // !!!Important!!! Enable receiving of the next value,
-    // since receiving has stopped after the end of the current received data packet.
-    IrReceiver.resume(); // Enable receiving of the next value
-
-    // Finally, check the received data and perform actions according to the received command
-    // this is where the commands are handled
-    switch (IrReceiver.decodedIRData.command)
-    {
-      case up:
-          // pitch up
-          handleCommand_moveUp();
-          break;
-
-      case down:
-          // pitch down
-          handleCommand_moveDown();
-          break;
-
-      case left:
-          // fast counterclockwise rotation
-          handleCommand_moveLeft();
-          break;
-
-      case right:
-          // fast clockwise rotation
-          handleCommand_moveRight();
-          break;
-
-      case ok:
-          handleCommand_fire();
-          break;
-
-      case star:
-          handleCommand_fireAll();
-          break;
-
-      case cmd0:
-          handleCommand_shakeHeadNo();
-          break;
-
-      case cmd9:
-          handleCommand_shakeHeadYes();
-          break;
-
-      case cmd7:
-          handleCommand_yosemiteSam();
-          break;
-    }
-  }
-
-  delay(5);
+  // Tasks are handling everything.
 }
 
 void shakeHeadYes(int moves = 3)
@@ -734,7 +813,7 @@ void moveDown(int moves)
   for (int i = 0; i < moves; i++)
   {
     if (pitchServoVal > pitchMin)
-    {                                                 // make sure the servo is within rotation limits (greater than 10 degrees by default)
+    { // make sure the servo is within rotation limits (greater than 10 degrees by default)
       Serial.println("DOWN");
       pitchServoVal = pitchServoVal - pitchMoveSpeed; // decrement the current angle and update
       pitchServo.write(pitchServoVal);
@@ -748,7 +827,7 @@ void moveUp(int moves)
   for (int i = 0; i < moves; i++)
   {
     if (pitchServoVal < pitchMax)
-    {                                                 // make sure the servo is within rotation limits (less than 175 degrees by default)
+    { // make sure the servo is within rotation limits (less than 175 degrees by default)
       Serial.println("UP");
       pitchServoVal = pitchServoVal + pitchMoveSpeed; // increment the current angle and update
       pitchServo.write(pitchServoVal);
@@ -758,7 +837,7 @@ void moveUp(int moves)
 }
 
 void fire()
-{                                                 // function for firing a single dart
+{ // function for firing a single dart
   Serial.println("FIRING");
   rollServo.write(rollStopSpeed + rollMoveSpeed); // start rotating the servo
   delay(rollPrecision);                           // time for approximately 60 degrees of rotation
@@ -767,7 +846,7 @@ void fire()
 }
 
 void fireAll()
-{                                                 // function to fire all 6 darts at once
+{ // function to fire all 6 darts at once
   Serial.println("FIRING ALL");
   rollServo.write(rollStopSpeed + rollMoveSpeed); // start rotating the servo
   delay(rollPrecision * 6);                       // time for 360 degrees of rotation
@@ -802,7 +881,7 @@ void homeServos()
 void webServerHandle_OnRoot()
 {
   Serial.println("/");
-  webServer.send(200, "text/html", SendHTML()); 
+  webServer.send(200, "text/html", SendHTML());
 }
 
 void webServerHandle_NotFound()
@@ -813,77 +892,77 @@ void webServerHandle_NotFound()
 
 void webServerHandle_moveUp()
 {
-    Serial.println("Handling moveUp");
-    handleCommand_moveUp();
-    webServer.send(200, "text/html", SendHTML());
+  Serial.println("Handling moveUp");
+  safeTurretMove(handleCommand_moveUp);
+  webServer.send(200, "text/html", SendHTML());
 }
 
 void webServerHandle_moveDown()
 {
-    Serial.println("Handling moveDown");
-    handleCommand_moveDown();
-    webServer.send(200, "text/html", SendHTML());
+  Serial.println("Handling moveDown");
+  safeTurretMove(handleCommand_moveDown);
+  webServer.send(200, "text/html", SendHTML());
 }
 
 void webServerHandle_moveLeft()
 {
-    Serial.println("Handling moveLeft");
-    handleCommand_moveLeft();
-    webServer.send(200, "text/html", SendHTML());
+  Serial.println("Handling moveLeft");
+  safeTurretMove(handleCommand_moveLeft);
+  webServer.send(200, "text/html", SendHTML());
 }
 
 void webServerHandle_moveRight()
 {
-    Serial.println("Handling moveRight");
-    handleCommand_moveRight();
-    webServer.send(200, "text/html", SendHTML());
+  Serial.println("Handling moveRight");
+  safeTurretMove(handleCommand_moveRight);
+  webServer.send(200, "text/html", SendHTML());
 }
 
 void webServerHandle_fire()
 {
-    Serial.println("Handling fire");
-    handleCommand_fire();
-    webServer.send(200, "text/html", SendHTML());
+  Serial.println("Handling fire");
+  safeTurretMove(handleCommand_fire);
+  webServer.send(200, "text/html", SendHTML());
 }
 
 void webServerHandle_fireAll()
 {
-    Serial.println("Handling fireAll");
-    handleCommand_fireAll();
-    webServer.send(200, "text/html", SendHTML());
+  Serial.println("Handling fireAll");
+  safeTurretMove(handleCommand_fireAll);
+  webServer.send(200, "text/html", SendHTML());
 }
 
 void webServerHandle_shakeHeadNo()
 {
-    Serial.println("Handling shakeHeadNo");
-    handleCommand_shakeHeadNo();
-    webServer.send(200, "text/html", SendHTML());
+  Serial.println("Handling shakeHeadNo");
+  safeTurretMove(handleCommand_shakeHeadNo);
+  webServer.send(200, "text/html", SendHTML());
 }
 
 void webServerHandle_shakeHeadYes()
 {
-    Serial.println("Handling shakeHeadYes");
-    handleCommand_shakeHeadYes();
-    webServer.send(200, "text/html", SendHTML());
+  Serial.println("Handling shakeHeadYes");
+  safeTurretMove(handleCommand_shakeHeadYes);
+  webServer.send(200, "text/html", SendHTML());
 }
 
 void webServerHandle_yosemiteSam()
 {
-    Serial.println("Handling yosemiteSam");
-    handleCommand_yosemiteSam();
-    webServer.send(200, "text/html", SendHTML());
+  Serial.println("Handling yosemiteSam");
+  safeTurretMove(handleCommand_yosemiteSam);
+  webServer.send(200, "text/html", SendHTML());
 }
 
 void webServerHandle_toggleComputerVision()
 {
-    Serial.printf("Handling toggleComputerVision (Setting to %s)\n", computerVisionOn ? "false" : "true");
-    computerVisionOn = !computerVisionOn;
+  Serial.printf("Handling toggleComputerVision (Setting to %s)\n", computerVisionOn ? "false" : "true");
+  computerVisionOn = !computerVisionOn;
 
-    // If computer vision was just toggled on, reset timer so it is used in the very next loop.
-    if (computerVisionOn)
-      previousMillis = 0;
+  // If computer vision was just toggled on, reset timer so it is used in the very next loop.
+  if (computerVisionOn)
+    previousMillis = 0;
 
-    webServer.send(200, "text/html", SendHTML());
+  webServer.send(200, "text/html", SendHTML());
 }
 
 void handleCommand_moveUp()
@@ -1032,14 +1111,14 @@ String SendHTML()
 
   if (computerVisionOn)
   {
-      htmlString += R"(
+    htmlString += R"(
                           <p>Compuer Vision On</p>
                           <a class="button button-neutral" href="/toggleComputerVision">Off</a>
       )";
   }
   else
   {
-      htmlString += R"(
+    htmlString += R"(
                           <p>Compuer Vision Off</p>
                           <a class="button button-neutral" href="/toggleComputerVision">On</a>
       )";
