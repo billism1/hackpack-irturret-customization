@@ -31,9 +31,8 @@ const char *computerVisionApiKey = "***";
 SemaphoreHandle_t turretMovementMutex;
 SemaphoreHandle_t webServerOperationMutex;
 SemaphoreHandle_t computerVisionToggleMutex;
-SemaphoreHandle_t testMutex;
 
-bool computerVisionToggle = true;
+bool computerVisionToggle = false;
 
 const long cameraInterval = 30000;
 unsigned long previousMillis = 0;
@@ -531,15 +530,10 @@ void webServerTask(void *pvParameters)
 {
   while (true)
   {
-    if (xSemaphoreTake(testMutex, portMAX_DELAY))
-    {
-      // Serial.println("\nWeb server task running");
+    // Serial.println("\nWeb server task running");
 
-      // Check for input from web site
-      webServer.handleClient();
-
-      xSemaphoreGive(testMutex);
-    }
+    // Check for input from web site
+    webServer.handleClient();
 
     // Delay to allow other tasks to run
     vTaskDelay(pdMS_TO_TICKS(5)); // Delay for 5ms
@@ -641,47 +635,42 @@ void aiTask(void *pvParameters)
 {
   while (true)
   {
-    if (xSemaphoreTake(testMutex, portMAX_DELAY))
+    // Serial.println("\nAI task running");
+
+    unsigned long currentMillis = millis();
+    if (currentMillis - previousMillis >= cameraInterval)
     {
-      // Serial.println("\nAI task running");
+      previousMillis = currentMillis;
 
-      unsigned long currentMillis = millis();
-      if (currentMillis - previousMillis >= cameraInterval)
+      bool shouldProceed = false;
+      if (xSemaphoreTake(computerVisionToggleMutex, portMAX_DELAY))
       {
-        previousMillis = currentMillis;
-
-        bool shouldProceed = false;
-        if (xSemaphoreTake(computerVisionToggleMutex, portMAX_DELAY))
-        {
-          shouldProceed = computerVisionToggle;
-          xSemaphoreGive(computerVisionToggleMutex);
-        }
-
-        if (shouldProceed)
-        {
-          Serial.println("\nComputer vision is ON. Proceeding to take a photo...");
-
-          digitalWrite(LED_PIN, HIGH);
-          vTaskDelay(pdMS_TO_TICKS(100));
-          digitalWrite(LED_PIN, LOW);
-          vTaskDelay(pdMS_TO_TICKS(100));
-          digitalWrite(LED_PIN, HIGH);
-          vTaskDelay(pdMS_TO_TICKS(100));
-          digitalWrite(LED_PIN, LOW);
-
-          takePhotoAndSave();
-
-          digitalWrite(LED_PIN, HIGH);
-          vTaskDelay(pdMS_TO_TICKS(100));
-          digitalWrite(LED_PIN, LOW);
-        }
-        else
-        {
-          Serial.println("\nComputer vision is OFF. Skipping photo.");
-        }
+        shouldProceed = computerVisionToggle;
+        xSemaphoreGive(computerVisionToggleMutex);
       }
 
-      xSemaphoreGive(testMutex);
+      if (shouldProceed)
+      {
+        Serial.println("\nComputer vision is ON. Proceeding to take a photo...");
+
+        digitalWrite(LED_PIN, HIGH);
+        vTaskDelay(pdMS_TO_TICKS(100));
+        digitalWrite(LED_PIN, LOW);
+        vTaskDelay(pdMS_TO_TICKS(100));
+        digitalWrite(LED_PIN, HIGH);
+        vTaskDelay(pdMS_TO_TICKS(100));
+        digitalWrite(LED_PIN, LOW);
+
+        takePhotoAndSave();
+
+        digitalWrite(LED_PIN, HIGH);
+        vTaskDelay(pdMS_TO_TICKS(100));
+        digitalWrite(LED_PIN, LOW);
+      }
+      else
+      {
+        Serial.println("\nComputer vision is OFF. Skipping photo.");
+      }
     }
 
     // Delay to allow other tasks to run
@@ -720,14 +709,6 @@ void setup()
   if (computerVisionToggleMutex == NULL)
   {
     Serial.println("Failed to create computer vision toggle mutex");
-    while (true)
-      ; // Halt if mutex creation fails
-  }
-
-  testMutex = xSemaphoreCreateMutex();
-  if (testMutex == NULL)
-  {
-    Serial.println("Failed to create test mutex");
     while (true)
       ; // Halt if mutex creation fails
   }
@@ -782,10 +763,14 @@ void setup()
   Serial.println("Done homing servos.");
 
   Serial.println("\nCreating tasks...");
-  xTaskCreate(webServerTask, "Web Server Task", 4048, NULL, 1, NULL);
-  xTaskCreate(irTask, "IR Task", 2048, NULL, 1, NULL);
-  xTaskCreate(otaTask, "OTA Task", 2048, NULL, 1, NULL);
-  xTaskCreate(aiTask, "AI Task", 4048, NULL, 1, NULL);
+  // xTaskCreate(webServerTask, "Web Server Task", 4048, NULL, 1, NULL);
+  // xTaskCreate(irTask, "IR Task", 2048, NULL, 1, NULL);
+  // xTaskCreate(otaTask, "OTA Task", 2048, NULL, 1, NULL);
+  // xTaskCreate(aiTask, "AI Task", 4048, NULL, 1, NULL);
+  xTaskCreatePinnedToCore(webServerTask, "Web Server Task", 4048, NULL, 1, NULL, 0); // Pin webServerTask to core 0
+  xTaskCreatePinnedToCore(irTask, "IR Task", 2048, NULL, 1, NULL, 0);                // Pin irTask to core 0
+  xTaskCreatePinnedToCore(otaTask, "OTA Task", 2048, NULL, 1, NULL, 0);              // Pin otaTask to core 0
+  xTaskCreatePinnedToCore(aiTask, "AI Task", 4048, NULL, 1, NULL, 1);                // Pin aiTask to core 1
   Serial.println("Done creating tasks.");
 }
 
@@ -1034,6 +1019,8 @@ void webServerHandle_toggleComputerVision()
   {
     computerVisionToggle = !computerVisionToggle;
 
+    webServer.send(200, "application/json", "{ \"status\": \"ok\" }");
+
     Serial.printf("Handling toggleComputerVision (Setting to %s)\n", computerVisionToggle ? "true" : "false");
 
     // If computer vision was just toggled on, reset timer so it is used in the very next loop.
@@ -1041,8 +1028,6 @@ void webServerHandle_toggleComputerVision()
       previousMillis = 0;
 
     xSemaphoreGive(computerVisionToggleMutex);
-
-    webServer.send(200, "application/json", "{ \"status\": \"ok\" }");
   }
 }
 
@@ -1196,14 +1181,14 @@ String SendHTML()
     {
       htmlString += R"(
                           <p>Computer Vision On</p>
-                          <a class="button button-neutral" href="#" onclick="makeWebRequest('/toggleComputerVision'); location.reload();">Off</a>
+                          <a class="button button-neutral" href="#" onclick="handleClick('/toggleComputerVision');">Off</a>
       )";
     }
     else
     {
       htmlString += R"(
                           <p>Comptuer Vision Off</p>
-                          <a class="button button-neutral" href="#" onclick="makeWebRequest('/toggleComputerVision'); location.reload();">On</a>
+                          <a class="button button-neutral" href="#" onclick="handleClick('/toggleComputerVision');">On</a>
       )";
     }
 
@@ -1217,23 +1202,43 @@ String SendHTML()
               </table>
           </p>
 
-      <script>
-          function makeWebRequest(path) {
-              fetch(path, {
-                  method: 'GET',
-                  headers: {
-                      'Content-Type': 'application/json',
-                  },
-              })
-              .then(response => {
-                  // Handle the response as needed, e.g., parse JSON, update UI, etc.
-              })
-              .catch(error => {
-                  // Handle errors, e.g., show an error message, retry logic, etc.
-              });
-          }
-      </script>
+          <script>
+              async function makeWebRequest(path)
+              {
+                  try
+                  {
+                      const response = await fetch(path, {
+                          method: 'GET',
+                          headers: {
+                              'Content-Type': 'application/json',
+                          },
+                      });
 
+                      if (!response.ok)
+                      {
+                          throw new Error('Failed to fetch data');
+                      }
+
+                      const data = await response.json();
+                      return data;
+                  }
+                  catch (error)
+                  {
+                      console.error('Error:', error);
+                      throw error;
+                  }
+              }
+
+              async function handleClick(path)
+              {
+                  try
+                  {
+                      await makeWebRequest(path);
+                      location.reload();
+                  }
+                  catch (error) { }
+              }
+          </script>
       </body>
   </html>
   )";
