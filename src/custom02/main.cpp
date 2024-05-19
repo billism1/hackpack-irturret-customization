@@ -455,76 +455,72 @@ void takePhotoAndSave()
   file.close();
   esp_camera_fb_return(fb);
 
-  Serial.println("SKIPPING SENDING TO AZURE");
-  Serial.println("SKIPPING SENDING TO AZURE");
-  Serial.println("SKIPPING SENDING TO AZURE");
-
   // Send to Azure Cognitive Services
 
-  // Serial.println("Opening file to send to Azure Cognitive Services...");
+  Serial.println("Opening file to send to Azure Cognitive Services...");
 
-  // // Open the image file
-  // File imageFile = fs.open(path.c_str());
-  // if (!imageFile)
-  // {
-  //   Serial.println("Failed to open image file");
-  //   return;
-  // }
+  // Open the image file
+  File imageFile = fs.open(path.c_str());
+  if (!imageFile)
+  {
+    Serial.println("Failed to open image file");
+    return;
+  }
 
-  // size_t fileSize = imageFile.size();
+  size_t fileSize = imageFile.size();
 
-  // Serial.printf("Sending image to Azure Cognitive Services (File size %d)...\n", fileSize);
+  Serial.printf("Sending image to Azure Cognitive Services (File size %d)...\n", fileSize);
 
-  // Serial.printf("Sending image to Azure Cognitive Services (File size %d)...\n", fileSize);
+  Serial.printf("Sending image to Azure Cognitive Services (File size %d)...\n", fileSize);
 
-  // // Send the HTTP POST request to Azure Cognitive Services
-  // HTTPClient http;
-  // http.begin(computerVisionEndpoint);
-  // http.addHeader("Content-Type", "application/octet-stream");
-  // http.addHeader("Ocp-Apim-Subscription-Key", computerVisionApiKey);
+  // Send the HTTP POST request to Azure Cognitive Services
+  HTTPClient http;
+  http.begin(computerVisionEndpoint);
+  http.addHeader("Content-Type", "application/octet-stream");
+  http.addHeader("Ocp-Apim-Subscription-Key", computerVisionApiKey);
 
-  // Serial.println("Streaming file to endpoint...");
+  Serial.println("Streaming file to endpoint...");
 
-  // // Stream file into http POST request
-  // int httpResponseCode = http.sendRequest("POST", &imageFile, fileSize);
+  // Stream file into http POST request
+  int httpResponseCode = http.sendRequest("POST", &imageFile, fileSize);
 
-  // // Check for a successful request
-  // if (httpResponseCode == HTTP_CODE_OK)
-  // {
-  //   String response = http.getString();
-  //   Serial.println("Response from Azure Cognitive Services:");
-  //   Serial.println(response);
+  // Check for a successful request
+  if (httpResponseCode == HTTP_CODE_OK)
+  {
+    String response = http.getString();
+    Serial.println("Response from Azure Cognitive Services:");
+    Serial.println(response);
 
-  //   // Extract filename without extension
-  //   int dotIndex = path.lastIndexOf('.');
-  //   String fileName = path.substring(0, dotIndex);
+    // Extract filename without extension
+    int dotIndex = path.lastIndexOf('.');
+    String fileName = path.substring(0, dotIndex);
 
-  //   // Create a text file with the same name as the image file
-  //   String textFileName = fileName + ".json";
-  //   File textFile = fs.open(textFileName, FILE_WRITE);
-  //   if (textFile)
-  //   {
-  //     textFile.println(response);
-  //     textFile.close();
-  //     Serial.println("Response saved to " + textFileName);
-  //   }
-  //   else
-  //   {
-  //     Serial.println("Failed to create text file");
-  //   }
-  // }
-  // else
-  // {
-  //   Serial.print("HTTP POST request failed, error: ");
-  //   Serial.println(httpResponseCode);
-  //   String response = http.getString();
-  //   Serial.println("Response content:");
-  //   Serial.println(response);
-  // }
+    // Create a text file with the same name as the image file
+    String textFileName = fileName + ".json";
+    File textFile = fs.open(textFileName, FILE_WRITE);
+    if (textFile)
+    {
+      textFile.println(response);
+      textFile.close();
+      Serial.println("Response saved to " + textFileName);
+    }
+    else
+    {
+      Serial.println("Failed to create text file");
+    }
+  }
+  else
+  {
+    Serial.print("HTTP POST request failed, error: ");
+    Serial.println(httpResponseCode);
+    String response = http.getString();
+    Serial.println("Response content:");
+    Serial.println(response);
+  }
 
-  // // Clean up
-  // imageFile.close();
-  // http.end();
+  // Clean up
+  imageFile.close();
+  http.end();
 
   Serial.println("\ntakePhotoAndSave(): End");
 }
