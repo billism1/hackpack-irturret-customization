@@ -29,8 +29,11 @@ const char *computerVisionApiKey = "***";
 
 // Declare a mutex handle
 SemaphoreHandle_t turretMovementMutex;
+SemaphoreHandle_t webServerOperationMutex;
+SemaphoreHandle_t computerVisionToggleMutex;
+SemaphoreHandle_t testMutex;
 
-bool computerVisionOn = false;
+bool computerVisionToggle = true;
 
 const long cameraInterval = 30000;
 unsigned long previousMillis = 0;
@@ -129,6 +132,29 @@ int pitchMin = 10;  // this sets the minimum angle of the pitch servo to prevent
 camera_config_t config;
 
 WebServer webServer(80);
+
+// Function type definition
+typedef void (*FunctionPtr)();
+
+/// @brief To move the turret/servos, call this function to prevent attempting to move the turret/servos from more than 1 task simultaneously.
+/// @param func The function performing the turret/servos movements.
+void safeTurretMove(FunctionPtr func)
+{
+  if (xSemaphoreTake(turretMovementMutex, portMAX_DELAY))
+  {
+    func();
+    xSemaphoreGive(turretMovementMutex);
+  }
+}
+
+void safeWebServerOperation(FunctionPtr func)
+{
+  if (xSemaphoreTake(webServerOperationMutex, portMAX_DELAY))
+  {
+    func();
+    xSemaphoreGive(webServerOperationMutex);
+  }
+}
 
 String SendHTML();
 
@@ -277,19 +303,31 @@ void initWiFi()
 // Initialize web server (for remote control)
 void initWebServer()
 {
-  webServer.on("/", webServerHandle_OnRoot);
-  webServer.onNotFound(webServerHandle_NotFound);
+  webServer.on("/", []()
+               { safeWebServerOperation(webServerHandle_OnRoot); });
+  webServer.onNotFound([]()
+                       { safeWebServerOperation(webServerHandle_NotFound); });
 
-  webServer.on("/moveUp", webServerHandle_moveUp);
-  webServer.on("/moveDown", webServerHandle_moveDown);
-  webServer.on("/moveLeft", webServerHandle_moveLeft);
-  webServer.on("/moveRight", webServerHandle_moveRight);
-  webServer.on("/fire", webServerHandle_fire);
-  webServer.on("/fireAll", webServerHandle_fireAll);
-  webServer.on("/shakeHeadNo", webServerHandle_shakeHeadNo);
-  webServer.on("/shakeHeadYes", webServerHandle_shakeHeadYes);
-  webServer.on("/yosemiteSam", webServerHandle_yosemiteSam);
-  webServer.on("/toggleComputerVision", webServerHandle_toggleComputerVision);
+  webServer.on("/moveUp", []()
+               { safeWebServerOperation(webServerHandle_moveUp); });
+  webServer.on("/moveDown", []()
+               { safeWebServerOperation(webServerHandle_moveDown); });
+  webServer.on("/moveLeft", []()
+               { safeWebServerOperation(webServerHandle_moveLeft); });
+  webServer.on("/moveRight", []()
+               { safeWebServerOperation(webServerHandle_moveRight); });
+  webServer.on("/fire", []()
+               { safeWebServerOperation(webServerHandle_fire); });
+  webServer.on("/fireAll", []()
+               { safeWebServerOperation(webServerHandle_fireAll); });
+  webServer.on("/shakeHeadNo", []()
+               { safeWebServerOperation(webServerHandle_shakeHeadNo); });
+  webServer.on("/shakeHeadYes", []()
+               { safeWebServerOperation(webServerHandle_shakeHeadYes); });
+  webServer.on("/yosemiteSam", []()
+               { safeWebServerOperation(webServerHandle_yosemiteSam); });
+  webServer.on("/toggleComputerVision", []()
+               { safeWebServerOperation(webServerHandle_toggleComputerVision); });
 
   webServer.begin();
   Serial.println("HTTP server started.");
@@ -390,7 +428,7 @@ void takePhotoAndSave()
   if (!fb)
   {
     Serial.println("Camera capture failed. Restarting...");
-    delay(1000);
+    vTaskDelay(pdMS_TO_TICKS(1000));
     ESP.restart();
   }
 
@@ -417,85 +455,78 @@ void takePhotoAndSave()
   file.close();
   esp_camera_fb_return(fb);
 
+  Serial.println("SKIPPING SENDING TO AZURE");
+  Serial.println("SKIPPING SENDING TO AZURE");
+  Serial.println("SKIPPING SENDING TO AZURE");
+
   // Send to Azure Cognitive Services
 
-  Serial.println("Opening file to send to Azure Cognitive Services...");
+  // Serial.println("Opening file to send to Azure Cognitive Services...");
 
-  // Open the image file
-  File imageFile = fs.open(path.c_str());
-  if (!imageFile)
-  {
-    Serial.println("Failed to open image file");
-    return;
-  }
+  // // Open the image file
+  // File imageFile = fs.open(path.c_str());
+  // if (!imageFile)
+  // {
+  //   Serial.println("Failed to open image file");
+  //   return;
+  // }
 
-  size_t fileSize = imageFile.size();
+  // size_t fileSize = imageFile.size();
 
-  Serial.printf("Sending image to Azure Cognitive Services (File size %d)...\n", fileSize);
+  // Serial.printf("Sending image to Azure Cognitive Services (File size %d)...\n", fileSize);
 
-  // Send the HTTP POST request to Azure Cognitive Services
-  HTTPClient http;
-  http.begin(computerVisionEndpoint);
-  http.addHeader("Content-Type", "application/octet-stream");
-  http.addHeader("Ocp-Apim-Subscription-Key", computerVisionApiKey);
+  // Serial.printf("Sending image to Azure Cognitive Services (File size %d)...\n", fileSize);
 
-  Serial.println("Streaming file to endpoint...");
+  // // Send the HTTP POST request to Azure Cognitive Services
+  // HTTPClient http;
+  // http.begin(computerVisionEndpoint);
+  // http.addHeader("Content-Type", "application/octet-stream");
+  // http.addHeader("Ocp-Apim-Subscription-Key", computerVisionApiKey);
 
-  // Stream file into http POST request
-  int httpResponseCode = http.sendRequest("POST", &imageFile, fileSize);
+  // Serial.println("Streaming file to endpoint...");
 
-  // Check for a successful request
-  if (httpResponseCode == HTTP_CODE_OK)
-  {
-    String response = http.getString();
-    Serial.println("Response from Azure Cognitive Services:");
-    Serial.println(response);
+  // // Stream file into http POST request
+  // int httpResponseCode = http.sendRequest("POST", &imageFile, fileSize);
 
-    // Extract filename without extension
-    int dotIndex = path.lastIndexOf('.');
-    String fileName = path.substring(0, dotIndex);
+  // // Check for a successful request
+  // if (httpResponseCode == HTTP_CODE_OK)
+  // {
+  //   String response = http.getString();
+  //   Serial.println("Response from Azure Cognitive Services:");
+  //   Serial.println(response);
 
-    // Create a text file with the same name as the image file
-    String textFileName = fileName + ".json";
-    File textFile = fs.open(textFileName, FILE_WRITE);
-    if (textFile)
-    {
-      textFile.println(response);
-      textFile.close();
-      Serial.println("Response saved to " + textFileName);
-    }
-    else
-    {
-      Serial.println("Failed to create text file");
-    }
-  }
-  else
-  {
-    Serial.print("HTTP POST request failed, error: ");
-    Serial.println(httpResponseCode);
-    String response = http.getString();
-    Serial.println("Response content:");
-    Serial.println(response);
-  }
+  //   // Extract filename without extension
+  //   int dotIndex = path.lastIndexOf('.');
+  //   String fileName = path.substring(0, dotIndex);
 
-  // Clean up
-  http.end();
+  //   // Create a text file with the same name as the image file
+  //   String textFileName = fileName + ".json";
+  //   File textFile = fs.open(textFileName, FILE_WRITE);
+  //   if (textFile)
+  //   {
+  //     textFile.println(response);
+  //     textFile.close();
+  //     Serial.println("Response saved to " + textFileName);
+  //   }
+  //   else
+  //   {
+  //     Serial.println("Failed to create text file");
+  //   }
+  // }
+  // else
+  // {
+  //   Serial.print("HTTP POST request failed, error: ");
+  //   Serial.println(httpResponseCode);
+  //   String response = http.getString();
+  //   Serial.println("Response content:");
+  //   Serial.println(response);
+  // }
+
+  // // Clean up
+  // imageFile.close();
+  // http.end();
 
   Serial.println("\ntakePhotoAndSave(): End");
-}
-
-// Function type definition
-typedef void (*FunctionPtr)();
-
-/// @brief To move the turret/servos, call this function to prevent attempting to move the turret/servos from more than 1 task simultaneously.
-/// @param func The function performing the turret/servos movements.
-void safeTurretMove(FunctionPtr func)
-{
-  if (xSemaphoreTake(turretMovementMutex, portMAX_DELAY))
-  {
-    func();
-    xSemaphoreGive(turretMovementMutex);
-  }
 }
 
 /// @brief Task for checking for and handling any web server requests.
@@ -504,10 +535,15 @@ void webServerTask(void *pvParameters)
 {
   while (true)
   {
-    // Serial.println("\nWeb server task running");
+    if (xSemaphoreTake(testMutex, portMAX_DELAY))
+    {
+      // Serial.println("\nWeb server task running");
 
-    // Check for input from web site
-    webServer.handleClient();
+      // Check for input from web site
+      webServer.handleClient();
+
+      xSemaphoreGive(testMutex);
+    }
 
     // Delay to allow other tasks to run
     vTaskDelay(pdMS_TO_TICKS(5)); // Delay for 5ms
@@ -609,35 +645,47 @@ void aiTask(void *pvParameters)
 {
   while (true)
   {
-    // Serial.println("\nAI task running");
-
-    unsigned long currentMillis = millis();
-    if (currentMillis - previousMillis >= cameraInterval)
+    if (xSemaphoreTake(testMutex, portMAX_DELAY))
     {
-      previousMillis = currentMillis;
+      // Serial.println("\nAI task running");
 
-      if (computerVisionOn)
+      unsigned long currentMillis = millis();
+      if (currentMillis - previousMillis >= cameraInterval)
       {
-        Serial.println("\nComputer vision is ON. Proceeding to take a photo...");
+        previousMillis = currentMillis;
 
-        digitalWrite(LED_PIN, HIGH);
-        delay(100);
-        digitalWrite(LED_PIN, LOW);
-        delay(100);
-        digitalWrite(LED_PIN, HIGH);
-        delay(100);
-        digitalWrite(LED_PIN, LOW);
+        bool shouldProceed = false;
+        if (xSemaphoreTake(computerVisionToggleMutex, portMAX_DELAY))
+        {
+          shouldProceed = computerVisionToggle;
+          xSemaphoreGive(computerVisionToggleMutex);
+        }
 
-        takePhotoAndSave();
+        if (shouldProceed)
+        {
+          Serial.println("\nComputer vision is ON. Proceeding to take a photo...");
 
-        digitalWrite(LED_PIN, HIGH);
-        delay(100);
-        digitalWrite(LED_PIN, LOW);
+          digitalWrite(LED_PIN, HIGH);
+          vTaskDelay(pdMS_TO_TICKS(100));
+          digitalWrite(LED_PIN, LOW);
+          vTaskDelay(pdMS_TO_TICKS(100));
+          digitalWrite(LED_PIN, HIGH);
+          vTaskDelay(pdMS_TO_TICKS(100));
+          digitalWrite(LED_PIN, LOW);
+
+          takePhotoAndSave();
+
+          digitalWrite(LED_PIN, HIGH);
+          vTaskDelay(pdMS_TO_TICKS(100));
+          digitalWrite(LED_PIN, LOW);
+        }
+        else
+        {
+          Serial.println("\nComputer vision is OFF. Skipping photo.");
+        }
       }
-      else
-      {
-        Serial.println("\nComputer vision is OFF. Skipping photo.");
-      }
+
+      xSemaphoreGive(testMutex);
     }
 
     // Delay to allow other tasks to run
@@ -650,12 +698,44 @@ void setup()
 {
   Serial.begin(115200); // initializes the Serial communication between the computer and the microcontroller
 
-  delay(2000);
-
   Serial.println("Starting...");
 
   // initialize digital pin LED_PIN as an output
   pinMode(LED_PIN, OUTPUT);
+
+  Serial.println("\nCreating mutexes...");
+  turretMovementMutex = xSemaphoreCreateMutex();
+  if (turretMovementMutex == NULL)
+  {
+    Serial.println("Failed to turret movement mutex");
+    while (true)
+      ; // Halt if mutex creation fails
+  }
+
+  webServerOperationMutex = xSemaphoreCreateMutex();
+  if (webServerOperationMutex == NULL)
+  {
+    Serial.println("Failed to create web server operation mutex");
+    while (true)
+      ; // Halt if mutex creation fails
+  }
+
+  computerVisionToggleMutex = xSemaphoreCreateMutex();
+  if (computerVisionToggleMutex == NULL)
+  {
+    Serial.println("Failed to create computer vision toggle mutex");
+    while (true)
+      ; // Halt if mutex creation fails
+  }
+
+  testMutex = xSemaphoreCreateMutex();
+  if (testMutex == NULL)
+  {
+    Serial.println("Failed to create test mutex");
+    while (true)
+      ; // Halt if mutex creation fails
+  }
+  Serial.println("Done creating mutex.");
 
   // Initialize Wi-Fi
   Serial.println("\nInitializing wifi...");
@@ -705,21 +785,11 @@ void setup()
   homeServos(); // set servo motors to home position
   Serial.println("Done homing servos.");
 
-  Serial.println("\nCreating mutex...");
-  turretMovementMutex = xSemaphoreCreateMutex();
-  if (turretMovementMutex == NULL)
-  {
-    Serial.println("Failed to create log mutex");
-    while (true)
-      ; // Halt if mutex creation fails
-  }
-  Serial.println("Done creating mutex.");
-
   Serial.println("\nCreating tasks...");
-  xTaskCreate(webServerTask, "Web Server Task", 2048, NULL, 1, NULL);
+  xTaskCreate(webServerTask, "Web Server Task", 4048, NULL, 1, NULL);
   xTaskCreate(irTask, "IR Task", 2048, NULL, 1, NULL);
   xTaskCreate(otaTask, "OTA Task", 2048, NULL, 1, NULL);
-  xTaskCreate(aiTask, "AI Task", 2048, NULL, 1, NULL);
+  xTaskCreate(aiTask, "AI Task", 4048, NULL, 1, NULL);
   Serial.println("Done creating tasks.");
 }
 
@@ -745,19 +815,19 @@ void shakeHeadYes(int moves = 3)
     for (int angle = startAngle; angle <= nodAngle; angle++)
     {
       pitchServo.write(angle);
-      delay(7); // Adjust delay for smoother motion
+      vTaskDelay(pdMS_TO_TICKS(7)); // Adjust delay for smoother motion
     }
 
-    delay(50); // Pause at nodding position
+    vTaskDelay(pdMS_TO_TICKS(50)); // Pause at nodding position
 
     // Nod down
     for (int angle = nodAngle; angle >= startAngle; angle--)
     {
       pitchServo.write(angle);
-      delay(7); // Adjust delay for smoother motion
+      vTaskDelay(pdMS_TO_TICKS(7)); // Adjust delay for smoother motion
     }
 
-    delay(50); // Pause at starting position
+    vTaskDelay(pdMS_TO_TICKS(50)); // Pause at starting position
   }
 }
 
@@ -774,13 +844,13 @@ void shakeHeadNo(int moves = 3)
     // Repeat nodding motion three times
     // rotate right, stop, then rotate left, stop
     yawServo.write(140);
-    delay(190); // Adjust delay for smoother motion
+    vTaskDelay(pdMS_TO_TICKS(190)); // Adjust delay for smoother motion
     yawServo.write(yawStopSpeed);
-    delay(50);
+    vTaskDelay(pdMS_TO_TICKS(50));
     yawServo.write(40);
-    delay(190); // Adjust delay for smoother motion
+    vTaskDelay(pdMS_TO_TICKS(190)); // Adjust delay for smoother motion
     yawServo.write(yawStopSpeed);
-    delay(50); // Pause at starting position
+    vTaskDelay(pdMS_TO_TICKS(50)); // Pause at starting position
   }
 }
 
@@ -790,9 +860,9 @@ void moveLeft(int moves)
   {
     Serial.println("LEFT");
     yawServo.write(yawStopSpeed + yawMoveSpeed); // adding the servo speed = 180 (full counterclockwise rotation speed)
-    delay(yawPrecision);                         // stay rotating for a certain number of milliseconds
+    vTaskDelay(pdMS_TO_TICKS(yawPrecision));     // stay rotating for a certain number of milliseconds
     yawServo.write(yawStopSpeed);                // stop rotating
-    delay(5);                                    // delay for smoothness
+    vTaskDelay(pdMS_TO_TICKS(5));                // delay for smoothness
   }
 }
 
@@ -802,9 +872,9 @@ void moveRight(int moves)
   {
     Serial.println("RIGHT");
     yawServo.write(yawStopSpeed - yawMoveSpeed); // subtracting the servo speed = 0 (full clockwise rotation speed)
-    delay(yawPrecision);
+    vTaskDelay(pdMS_TO_TICKS(yawPrecision));
     yawServo.write(yawStopSpeed);
-    delay(5);
+    vTaskDelay(pdMS_TO_TICKS(5));
   }
 }
 
@@ -817,7 +887,7 @@ void moveDown(int moves)
       Serial.println("DOWN");
       pitchServoVal = pitchServoVal - pitchMoveSpeed; // decrement the current angle and update
       pitchServo.write(pitchServoVal);
-      delay(50);
+      vTaskDelay(pdMS_TO_TICKS(50));
     }
   }
 }
@@ -831,7 +901,7 @@ void moveUp(int moves)
       Serial.println("UP");
       pitchServoVal = pitchServoVal + pitchMoveSpeed; // increment the current angle and update
       pitchServo.write(pitchServoVal);
-      delay(50);
+      vTaskDelay(pdMS_TO_TICKS(50));
     }
   }
 }
@@ -840,18 +910,18 @@ void fire()
 { // function for firing a single dart
   Serial.println("FIRING");
   rollServo.write(rollStopSpeed + rollMoveSpeed); // start rotating the servo
-  delay(rollPrecision);                           // time for approximately 60 degrees of rotation
+  vTaskDelay(pdMS_TO_TICKS(rollPrecision));       // time for approximately 60 degrees of rotation
   rollServo.write(rollStopSpeed);                 // stop rotating the servo
-  delay(5);                                       // delay for smoothness
+  vTaskDelay(pdMS_TO_TICKS(5));                   // delay for smoothness
 }
 
 void fireAll()
 { // function to fire all 6 darts at once
   Serial.println("FIRING ALL");
   rollServo.write(rollStopSpeed + rollMoveSpeed); // start rotating the servo
-  delay(rollPrecision * 6);                       // time for 360 degrees of rotation
+  vTaskDelay(pdMS_TO_TICKS(rollPrecision * 6));   // time for 360 degrees of rotation
   rollServo.write(rollStopSpeed);                 // stop rotating the servo
-  delay(5);                                       // delay for smoothness
+  vTaskDelay(pdMS_TO_TICKS(5));                   // delay for smoothness
 }
 
 /// @brief Shoot around aimlessly.
@@ -863,18 +933,18 @@ void yosemiteSam()
   Serial.println(" AND SPIN");
   moveLeft(7);
   rollServo.write(rollStopSpeed); // stop rotating the servo
-  delay(5);                       // delay for smoothness
+  vTaskDelay(pdMS_TO_TICKS(5));   // delay for smoothness
 }
 
 void homeServos()
 {
   Serial.println("HOMING");
   yawServo.write(yawStopSpeed); // setup YAW servo to be STOPPED (90)
-  delay(20);
+  vTaskDelay(pdMS_TO_TICKS(20));
   rollServo.write(rollStopSpeed); // setup ROLL servo to be STOPPED (90)
-  delay(100);
+  vTaskDelay(pdMS_TO_TICKS(100));
   pitchServo.write(100); // set PITCH servo to 100 degree position
-  delay(100);
+  vTaskDelay(pdMS_TO_TICKS(100));
   pitchServoVal = 100; // store the pitch servo value
 }
 
@@ -887,82 +957,97 @@ void webServerHandle_OnRoot()
 void webServerHandle_NotFound()
 {
   Serial.println("NotFound");
-  webServer.send(404, "text/plain", "Not found");
+  webServer.send(404, "application/json", "{ \"status\": \"Not Found\" }");
 }
 
 void webServerHandle_moveUp()
 {
   Serial.println("Handling moveUp");
   safeTurretMove(handleCommand_moveUp);
-  webServer.send(200, "text/html", SendHTML());
+
+  webServer.send(200, "application/json", "{ \"status\": \"ok\" }");
 }
 
 void webServerHandle_moveDown()
 {
   Serial.println("Handling moveDown");
   safeTurretMove(handleCommand_moveDown);
-  webServer.send(200, "text/html", SendHTML());
+
+  webServer.send(200, "application/json", "{ \"status\": \"ok\" }");
 }
 
 void webServerHandle_moveLeft()
 {
   Serial.println("Handling moveLeft");
   safeTurretMove(handleCommand_moveLeft);
-  webServer.send(200, "text/html", SendHTML());
+
+  webServer.send(200, "application/json", "{ \"status\": \"ok\" }");
 }
 
 void webServerHandle_moveRight()
 {
   Serial.println("Handling moveRight");
   safeTurretMove(handleCommand_moveRight);
-  webServer.send(200, "text/html", SendHTML());
+
+  webServer.send(200, "application/json", "{ \"status\": \"ok\" }");
 }
 
 void webServerHandle_fire()
 {
   Serial.println("Handling fire");
   safeTurretMove(handleCommand_fire);
-  webServer.send(200, "text/html", SendHTML());
+
+  webServer.send(200, "application/json", "{ \"status\": \"ok\" }");
 }
 
 void webServerHandle_fireAll()
 {
   Serial.println("Handling fireAll");
   safeTurretMove(handleCommand_fireAll);
-  webServer.send(200, "text/html", SendHTML());
+
+  webServer.send(200, "application/json", "{ \"status\": \"ok\" }");
 }
 
 void webServerHandle_shakeHeadNo()
 {
   Serial.println("Handling shakeHeadNo");
   safeTurretMove(handleCommand_shakeHeadNo);
-  webServer.send(200, "text/html", SendHTML());
+
+  webServer.send(200, "application/json", "{ \"status\": \"ok\" }");
 }
 
 void webServerHandle_shakeHeadYes()
 {
   Serial.println("Handling shakeHeadYes");
   safeTurretMove(handleCommand_shakeHeadYes);
-  webServer.send(200, "text/html", SendHTML());
+
+  webServer.send(200, "application/json", "{ \"status\": \"ok\" }");
 }
 
 void webServerHandle_yosemiteSam()
 {
   Serial.println("Handling yosemiteSam");
   safeTurretMove(handleCommand_yosemiteSam);
-  webServer.send(200, "text/html", SendHTML());
+
+  webServer.send(200, "application/json", "{ \"status\": \"ok\" }");
 }
 
 void webServerHandle_toggleComputerVision()
 {
-  Serial.printf("Handling toggleComputerVision (Setting to %s)\n", computerVisionOn ? "false" : "true");
-  computerVisionOn = !computerVisionOn;
+  if (xSemaphoreTake(computerVisionToggleMutex, portMAX_DELAY))
+  {
+    computerVisionToggle = !computerVisionToggle;
 
-  // If computer vision was just toggled on, reset timer so it is used in the very next loop.
-  if (computerVisionOn)
-    previousMillis = 0;
+    Serial.printf("Handling toggleComputerVision (Setting to %s)\n", computerVisionToggle ? "true" : "false");
 
-  webServer.send(200, "text/html", SendHTML());
+    // If computer vision was just toggled on, reset timer so it is used in the very next loop.
+    if (computerVisionToggle)
+      previousMillis = 0;
+
+    xSemaphoreGive(computerVisionToggleMutex);
+
+    webServer.send(200, "application/json", "{ \"status\": \"ok\" }");
+  }
 }
 
 void handleCommand_moveUp()
@@ -993,19 +1078,19 @@ void handleCommand_fire()
 void handleCommand_fireAll()
 {
   fireAll();
-  delay(50);
+  vTaskDelay(pdMS_TO_TICKS(50));
 }
 
 void handleCommand_shakeHeadNo()
 {
   shakeHeadNo(3);
-  delay(50);
+  vTaskDelay(pdMS_TO_TICKS(50));
 }
 
 void handleCommand_shakeHeadYes()
 {
   shakeHeadYes(3);
-  delay(50);
+  vTaskDelay(pdMS_TO_TICKS(50));
 }
 
 void handleCommand_yosemiteSam()
@@ -1052,42 +1137,42 @@ String SendHTML()
           <h1>Turret Control</h1>
           <p>
               <table>
-                  <tr>
-                      <td>&nbsp;</td>
-                      <td>
-                          <a class="button button-move" href="/moveUp">Move Up</a>
-                      </td>
-                      <td>&nbsp;</td>
-                  </tr>
-                  <tr>
-                      <td>
-                          <a class="button button-move" href="/moveLeft">Move Left</a>
-                      </td>
-                      <td>
-                          <a class="button button-fire" href="/fire">Fire</a>
-                      </td>
-                      <td>
-                          <a class="button button-move" href="/moveRight">Move Right</a>
-                      </td>
-                  </tr>
-                  <tr>
-                      <td>&nbsp;</td>
-                      <td>
-                          <a class="button button-move" href="/moveDown">Move Down</a>
-                      </td>
-                      <td>&nbsp;</td>
-                  </tr>
+                <tr>
+                    <td>&nbsp;</td>
+                    <td>
+                        <a class="button button-move" href="#" onclick="makeWebRequest('/moveUp');">Move Up</a>
+                    </td>
+                    <td>&nbsp;</td>
+                </tr>
+                <tr>
+                    <td>
+                        <a class="button button-move" href="#" onclick="makeWebRequest('/moveLeft');">Move Left</a>
+                    </td>
+                    <td>
+                        <a class="button button-fire" href="#" onclick="makeWebRequest('/fire');">Fire</a>
+                    </td>
+                    <td>
+                        <a class="button button-move" href="#" onclick="makeWebRequest('/moveRight');">Move Right</a>
+                    </td>
+                </tr>
+                <tr>
+                    <td>&nbsp;</td>
+                    <td>
+                        <a class="button button-move" href="#" onclick="makeWebRequest('/moveDown');">Move Down</a>
+                    </td>
+                    <td>&nbsp;</td>
+                </tr>
               </table>
           </p>
           <p>
               <table>
                   <tr>
                       <td>
-                          <a class="button button-fire-all" href="/fireAll">Fire All</a>
+                          <a class="button button-fire-all" href="#" onclick="makeWebRequest('/fireAll');">Fire All</a>
                       </td>
                       <td>&nbsp;</td>
                       <td>
-                          <a class="button button-yosemite-sam" href="/yosemiteSam">Yosemite Sam</a>
+                          <a class="button button-yosemite-sam" href="#" onclick="makeWebRequest('/yosemiteSam');">Yosemite Sam</a>
                       </td>
                   </tr>
                   <tr>
@@ -1097,11 +1182,11 @@ String SendHTML()
                   </tr>
                   <tr>
                       <td>
-                          <a class="button button-neutral" href="/shakeHeadNo">Shake No</a>
+                          <a class="button button-neutral" href="#" onclick="makeWebRequest('/shakeHeadNo');">Shake No</a>
                       </td>
                       <td>&nbsp;</td>
                       <td>
-                          <a class="button button-neutral" href="/shakeHeadYes">Nod Yes</a>
+                          <a class="button button-neutral" href="#" onclick="makeWebRequest('/shakeHeadYes');">Nod Yes</a>
                       </td>
                   </tr>
                   <tr>
@@ -1109,19 +1194,24 @@ String SendHTML()
                       <td>
   )";
 
-  if (computerVisionOn)
+  if (xSemaphoreTake(computerVisionToggleMutex, portMAX_DELAY))
   {
-    htmlString += R"(
-                          <p>Compuer Vision On</p>
-                          <a class="button button-neutral" href="/toggleComputerVision">Off</a>
+    if (computerVisionToggle)
+    {
+      htmlString += R"(
+                          <p>Computer Vision On</p>
+                          <a class="button button-neutral" href="#" onclick="makeWebRequest('/toggleComputerVision'); location.reload();">Off</a>
       )";
-  }
-  else
-  {
-    htmlString += R"(
-                          <p>Compuer Vision Off</p>
-                          <a class="button button-neutral" href="/toggleComputerVision">On</a>
+    }
+    else
+    {
+      htmlString += R"(
+                          <p>Comptuer Vision Off</p>
+                          <a class="button button-neutral" href="#" onclick="makeWebRequest('/toggleComputerVision'); location.reload();">On</a>
       )";
+    }
+
+    xSemaphoreGive(computerVisionToggleMutex);
   }
 
   htmlString += R"(
@@ -1130,6 +1220,24 @@ String SendHTML()
                   </tr>
               </table>
           </p>
+
+      <script>
+          function makeWebRequest(path) {
+              fetch(path, {
+                  method: 'GET',
+                  headers: {
+                      'Content-Type': 'application/json',
+                  },
+              })
+              .then(response => {
+                  // Handle the response as needed, e.g., parse JSON, update UI, etc.
+              })
+              .catch(error => {
+                  // Handle errors, e.g., show an error message, retry logic, etc.
+              });
+          }
+      </script>
+
       </body>
   </html>
   )";

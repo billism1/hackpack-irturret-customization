@@ -36,25 +36,25 @@
                 <tr>
                     <td>&nbsp;</td>
                     <td>
-                        <a class="button button-move" href="/moveUp">Move Up</a>
+                        <a class="button button-move" href="#" onclick="makeWebRequest('/moveUp');">Move Up</a>
                     </td>
                     <td>&nbsp;</td>
                 </tr>
                 <tr>
                     <td>
-                        <a class="button button-move" href="/moveLeft">Move Left</a>
+                        <a class="button button-move" href="#" onclick="makeWebRequest('/moveLeft');">Move Left</a>
                     </td>
                     <td>
-                        <a class="button button-fire" href="/fire">Fire</a>
+                        <a class="button button-fire" href="#" onclick="makeWebRequest('/fire');">Fire</a>
                     </td>
                     <td>
-                        <a class="button button-move" href="/moveRight">Move Right</a>
+                        <a class="button button-move" href="#" onclick="makeWebRequest('/moveRight');">Move Right</a>
                     </td>
                 </tr>
                 <tr>
                     <td>&nbsp;</td>
                     <td>
-                        <a class="button button-move" href="/moveDown">Move Down</a>
+                        <a class="button button-move" href="#" onclick="makeWebRequest('/moveDown');">Move Down</a>
                     </td>
                     <td>&nbsp;</td>
                 </tr>
@@ -64,35 +64,52 @@
             <table>
                 <tr>
                     <td>
-                        <a class="button button-fire-all" href="/fireAll">Fire All</a>
+                        <a class="button button-fire-all" href="#" onclick="makeWebRequest('/fireAll');">Fire All</a>
                     </td>
                     <td>&nbsp;</td>
                     <td>
-                        <a class="button button-yosemite-sam" href="/yosemiteSam">Yosemite Sam</a>
-                    </td>
-                </tr>
-                <tr>
-                    <td>&nbsp;</td>
-                    <td>&nbsp;</td>
-                    <td>&nbsp;</td>
-                </tr>
-                <tr>
-                    <td>
-                        <a class="button button-neutral" href="/shakeHeadNo">Shake No</a>
-                    </td>
-                    <td>&nbsp;</td>
-                    <td>
-                        <a class="button button-neutral" href="/shakeHeadYes">Nod Yes</a>
+                        <a class="button button-yosemite-sam" href="#" onclick="makeWebRequest('/yosemiteSam');">Yosemite Sam</a>
                     </td>
                 </tr>
                 <tr>
                     <td>&nbsp;</td>
+                    <td>&nbsp;</td>
+                    <td>&nbsp;</td>
+                </tr>
+                <tr>
                     <td>
-                        <p>Compuer Vision Off</p><a class="button button-neutral" href="/toggleComputerVision">On</a>
+                        <a class="button button-neutral" href="#" onclick="makeWebRequest('/shakeHeadNo');">Shake No</a>
+                    </td>
+                    <td>&nbsp;</td>
+                    <td>
+                        <a class="button button-neutral" href="#" onclick="makeWebRequest('/shakeHeadYes');">Nod Yes</a>
+                    </td>
+                </tr>
+                <tr>
+                    <td>&nbsp;</td>
+                    <td>
+                        <p>Computer Vision Off</p><a class="button button-neutral" href="#" onclick="makeWebRequest('/toggleComputerVision'); location.reload();">On</a>
                     </td>
                     <td>&nbsp;</td>
                 </tr>
             </table>
         </p>
+
+        <script>
+            function makeWebRequest(path) {
+                fetch(path, {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                })
+                .then(response => {
+                    // Handle the response as needed, e.g., parse JSON, update UI, etc.
+                })
+                .catch(error => {
+                    // Handle errors, e.g., show an error message, retry logic, etc.
+                });
+            }
+        </script>
     </body>
 </html>
