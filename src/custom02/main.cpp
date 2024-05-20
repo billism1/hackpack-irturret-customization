@@ -1116,63 +1116,64 @@ String SendHTML()
       </head>
       <body>
           <h1>Turret Control</h1>
-          <p>
-              <table>
-                <tr>
-                    <td>&nbsp;</td>
-                    <td>
-                        <a class="button button-move" href="#" onclick="makeWebRequest('/moveUp');">Move Up</a>
-                    </td>
-                    <td>&nbsp;</td>
-                </tr>
-                <tr>
-                    <td>
-                        <a class="button button-move" href="#" onclick="makeWebRequest('/moveLeft');">Move Left</a>
-                    </td>
-                    <td>
-                        <a class="button button-fire" href="#" onclick="makeWebRequest('/fire');">Fire</a>
-                    </td>
-                    <td>
-                        <a class="button button-move" href="#" onclick="makeWebRequest('/moveRight');">Move Right</a>
-                    </td>
-                </tr>
-                <tr>
-                    <td>&nbsp;</td>
-                    <td>
-                        <a class="button button-move" href="#" onclick="makeWebRequest('/moveDown');">Move Down</a>
-                    </td>
-                    <td>&nbsp;</td>
-                </tr>
-              </table>
-          </p>
-          <p>
-              <table>
-                  <tr>
-                      <td>
-                          <a class="button button-fire-all" href="#" onclick="makeWebRequest('/fireAll');">Fire All</a>
-                      </td>
-                      <td>&nbsp;</td>
-                      <td>
-                          <a class="button button-yosemite-sam" href="#" onclick="makeWebRequest('/yosemiteSam');">Yosemite Sam</a>
-                      </td>
-                  </tr>
-                  <tr>
-                      <td>&nbsp;</td>
-                      <td>&nbsp;</td>
-                      <td>&nbsp;</td>
-                  </tr>
-                  <tr>
-                      <td>
-                          <a class="button button-neutral" href="#" onclick="makeWebRequest('/shakeHeadNo');">Shake No</a>
-                      </td>
-                      <td>&nbsp;</td>
-                      <td>
-                          <a class="button button-neutral" href="#" onclick="makeWebRequest('/shakeHeadYes');">Nod Yes</a>
-                      </td>
-                  </tr>
-                  <tr>
-                      <td>&nbsp;</td>
-                      <td>
+          <center>
+              <p>
+                  <table>
+                    <tr>
+                        <td>&nbsp;</td>
+                        <td>
+                            <a class="button button-move" href="#" onclick="makeWebRequest('/moveUp');">Move Up</a>
+                        </td>
+                        <td>&nbsp;</td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <a class="button button-move" href="#" onclick="makeWebRequest('/moveLeft');">Move Left</a>
+                        </td>
+                        <td>
+                            <a class="button button-fire" href="#" onclick="makeWebRequest('/fire');">Fire</a>
+                        </td>
+                        <td>
+                            <a class="button button-move" href="#" onclick="makeWebRequest('/moveRight');">Move Right</a>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>&nbsp;</td>
+                        <td>
+                            <a class="button button-move" href="#" onclick="makeWebRequest('/moveDown');">Move Down</a>
+                        </td>
+                        <td>&nbsp;</td>
+                    </tr>
+                  </table>
+              </p>
+              <p>
+                  <table>
+                      <tr>
+                          <td>
+                              <a class="button button-fire-all" href="#" onclick="makeWebRequest('/fireAll');">Fire All</a>
+                          </td>
+                          <td>&nbsp;</td>
+                          <td>
+                              <a class="button button-yosemite-sam" href="#" onclick="makeWebRequest('/yosemiteSam');">Yosemite Sam</a>
+                          </td>
+                      </tr>
+                      <tr>
+                          <td>&nbsp;</td>
+                          <td>&nbsp;</td>
+                          <td>&nbsp;</td>
+                      </tr>
+                      <tr>
+                          <td>
+                              <a class="button button-neutral" href="#" onclick="makeWebRequest('/shakeHeadNo');">Shake No</a>
+                          </td>
+                          <td>&nbsp;</td>
+                          <td>
+                              <a class="button button-neutral" href="#" onclick="makeWebRequest('/shakeHeadYes');">Nod Yes</a>
+                          </td>
+                      </tr>
+                      <tr>
+                          <td>&nbsp;</td>
+                          <td>
   )";
 
   if (xSemaphoreTake(computerVisionToggleMutex, portMAX_DELAY))
@@ -1180,15 +1181,15 @@ String SendHTML()
     if (computerVisionToggle)
     {
       htmlString += R"(
-                          <p>Computer Vision On</p>
-                          <a class="button button-neutral" href="#" onclick="handleClick('/toggleComputerVision');">Off</a>
+                              <p>Computer Vision <b>On</b></p>
+                              <a class="button button-neutral" href="#" onclick="handleClick('/toggleComputerVision');">Turn Off</a>
       )";
     }
     else
     {
       htmlString += R"(
-                          <p>Comptuer Vision Off</p>
-                          <a class="button button-neutral" href="#" onclick="handleClick('/toggleComputerVision');">On</a>
+                              <p>Comptuer Vision <b>Off</b></p>
+                              <a class="button button-neutral" href="#" onclick="handleClick('/toggleComputerVision');">Turn On</a>
       )";
     }
 
@@ -1196,11 +1197,12 @@ String SendHTML()
   }
 
   htmlString += R"(
-                      </td>
-                      <td>&nbsp;</td>
-                  </tr>
-              </table>
-          </p>
+                          </td>
+                          <td>&nbsp;</td>
+                      </tr>
+                  </table>
+              </p>
+          </center>
 
           <script>
               async function makeWebRequest(path)
