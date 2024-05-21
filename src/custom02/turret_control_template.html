@@ -25,6 +25,7 @@
             .button-fire {background-color: #ff3333;}
             .button-fire-all {background-color: #e40000;}
             .button-yosemite-sam {background-color: #bb0000;}
+            .button-sentry {background-color:#ffad31;}
             .button-neutral {background-color: #71a6c9;}
             p {font-size: 14px;color: #888;margin-bottom: 10px;}
         </style>
@@ -87,11 +88,15 @@
                         </td>
                     </tr>
                     <tr>
-                        <td>&nbsp;</td>
                         <td>
-                            <p>Computer Vision <b>Off</b></p><a class="button button-neutral" href="#" onclick="handleClick('/toggleComputerVision');">Turn On</a>
+                            <center><p>Sentry Mode<br />(Rotating)<br /><b>Off</b></p></center><a class="button button-sentry" href="#" onclick="handleClick('/sentryRotatingMode');">Turn On</a>
                         </td>
-                        <td>&nbsp;</td>
+                        <td>
+                            <center><p>Computer<br />Vision<br /><b>Off</b></p></center><a class="button button-neutral" href="#" onclick="handleClick('/toggleComputerVision');">Turn On</a>
+                        </td>
+                        <td>
+                            <center><p>Sentry Mode<br />(Stationary)<br /><b>Off</b></p></center><a class="button button-sentry" href="#" onclick="handleClick('/sentryStationaryMode');">Turn On</a>
+                        </td>
                     </tr>
                 </table>
             </p>

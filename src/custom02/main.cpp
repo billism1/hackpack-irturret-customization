@@ -18,11 +18,16 @@ const char *networkHostname = "turret_mod";
 const char *ssid = "***";
 const char *password = "***";
 
+// Azure COgnitive Services API:
 // Azure Computer Vision resource
 // Free tier: "Free F0" (20 Calls per minute, 5K Calls per month)
 // https://portal.azure.com/#create/Microsoft.CognitiveServicesComputerVision
 // https://learn.microsoft.com/en-us/azure/ai-services/computer-vision/how-to/call-analyze-image-40?tabs=csharp&pivots=programming-language-csharp
+// https://learn.microsoft.com/en-us/azure/ai-services/computer-vision/how-to/call-analyze-image-40?pivots=programming-language-rest-api
 // https://learn.microsoft.com/en-us/azure/ai-services/computer-vision/quickstarts-sdk/image-analysis-client-library-40?tabs=visual-studio%2Cwindows&pivots=programming-language-rest-api
+
+// OpenAI API (Need (Paid) Plus level membership for continuous use of image vision feature):
+// https://platform.openai.com/docs/guides/vision
 
 const char *computerVisionEndpoint = "https://***.cognitiveservices.azure.com/computervision/imageanalysis:analyze?features=caption,denseCaptions,read,objects,people&model-version=latest&language=en&api-version=2024-02-01";
 const char *computerVisionApiKey = "***";
@@ -31,8 +36,11 @@ const char *computerVisionApiKey = "***";
 SemaphoreHandle_t turretMovementMutex;
 SemaphoreHandle_t webServerOperationMutex;
 SemaphoreHandle_t computerVisionToggleMutex;
+SemaphoreHandle_t sentryModesToggleMutex;
 
 bool computerVisionToggle = false;
+bool sentryRotatingModeToggle = false;
+bool sentryStationaryModeToggle = false;
 
 const long cameraInterval = 30000;
 unsigned long previousMillis = 0;
@@ -157,6 +165,19 @@ void safeWebServerOperation(FunctionPtr func)
 
 String SendHTML();
 
+void shakeHeadYes(int moves);
+void shakeHeadNo(int moves);
+void moveLeft(int moves);
+void moveRight(int moves);
+void moveDown(int moves);
+void moveUp(int moves);
+void fire();
+void fireAll();
+void sentryStationary();
+void sentryRotating();
+void yosemiteSam();
+void homeServos();
+
 // Web server handler prototypes
 void webServerHandle_OnRoot();
 void webServerHandle_NotFound();
@@ -168,6 +189,8 @@ void webServerHandle_fire();
 void webServerHandle_fireAll();
 void webServerHandle_shakeHeadNo();
 void webServerHandle_shakeHeadYes();
+void webServerHandle_sentryStationary();
+void webServerHandle_sentryRotating();
 void webServerHandle_yosemiteSam();
 void webServerHandle_toggleComputerVision();
 
@@ -180,6 +203,8 @@ void handleCommand_fire();
 void handleCommand_fireAll();
 void handleCommand_shakeHeadNo();
 void handleCommand_shakeHeadYes();
+void handleCommand_sentryStationary();
+void handleCommand_sentryRotating();
 void handleCommand_yosemiteSam();
 void homeServos();
 
@@ -323,6 +348,10 @@ void initWebServer()
                { safeWebServerOperation(webServerHandle_shakeHeadNo); });
   webServer.on("/shakeHeadYes", []()
                { safeWebServerOperation(webServerHandle_shakeHeadYes); });
+  webServer.on("/sentryRotatingMode", []()
+               { safeWebServerOperation(webServerHandle_sentryRotating); });
+  webServer.on("/sentryStationaryMode", []()
+               { safeWebServerOperation(webServerHandle_sentryStationary); });
   webServer.on("/yosemiteSam", []()
                { safeWebServerOperation(webServerHandle_yosemiteSam); });
   webServer.on("/toggleComputerVision", []()
@@ -412,9 +441,9 @@ void initMicroSDCard()
 }
 
 // Take photo and save to microSD card
-void takePhotoAndSave()
+void performAzureAIVision()
 {
-  Serial.println("\ntakePhotoAndSave(): Begin");
+  Serial.println("\nperformAzureAIVision(): Begin");
 
   // Take Picture with Camera
   camera_fb_t *fb = esp_camera_fb_get();
@@ -432,12 +461,12 @@ void takePhotoAndSave()
   }
 
   // Path where new picture will be saved in SD Card
-  Serial.println("\ntakePhotoAndSave(): getPictureFilename");
+  Serial.println("\nperformAzureAIVision(): getPictureFilename");
   String path = getPictureFilename();
   Serial.printf("Picture file name: %s\n", path.c_str());
 
   // Save picture to microSD card
-  Serial.println("\ntakePhotoAndSave(): Open file for output...");
+  Serial.println("\nperformAzureAIVision(): Open file for output...");
   fs::FS &fs = SD_MMC;
   File file = fs.open(path.c_str(), FILE_WRITE);
   if (!file)
@@ -450,7 +479,7 @@ void takePhotoAndSave()
     Serial.printf("Saved: %s\n", path.c_str());
   }
 
-  Serial.println("\ntakePhotoAndSave(): Close file...");
+  Serial.println("\nperformAzureAIVision(): Close file...");
   file.close();
   esp_camera_fb_return(fb);
 
@@ -521,7 +550,7 @@ void takePhotoAndSave()
   imageFile.close();
   http.end();
 
-  Serial.println("\ntakePhotoAndSave(): End");
+  Serial.println("\nperformAzureAIVision(): End");
 }
 
 /// @brief Task for checking for and handling any web server requests.
@@ -661,7 +690,7 @@ void aiTask(void *pvParameters)
         vTaskDelay(pdMS_TO_TICKS(100));
         digitalWrite(LED_PIN, LOW);
 
-        takePhotoAndSave();
+        performAzureAIVision();
 
         digitalWrite(LED_PIN, HIGH);
         vTaskDelay(pdMS_TO_TICKS(100));
@@ -675,6 +704,91 @@ void aiTask(void *pvParameters)
 
     // Delay to allow other tasks to run
     vTaskDelay(pdMS_TO_TICKS(5)); // Delay for 5ms
+  }
+}
+
+int sentryRotatePosition = 0;
+int sentryRotatePositionDirection = -1; // -1 or 1
+int sentryRotatePositionMin = -2;
+int sentryRotatePositionMax = 2;
+
+void sentryModeRotatingTask(void *pvParameters)
+{
+  while (true)
+  {
+    vTaskDelay(pdMS_TO_TICKS(100)); // Delay for 500ms
+
+    if (xSemaphoreTake(sentryModesToggleMutex, portMAX_DELAY))
+    {
+      if (!sentryRotatingModeToggle)
+      {
+        xSemaphoreGive(sentryModesToggleMutex);
+        continue;
+      }
+
+      if (sentryRotatePositionDirection == -1)
+      {
+        // Currently moving left
+        Serial.println("\nRotating Sentry Mode, turning left.");
+        safeTurretMove([]() { moveLeft(1); });
+
+        // Record move
+        sentryRotatePosition--;
+
+        if (sentryRotatePosition <= sentryRotatePositionMin)
+        {
+          // Switch direction
+          sentryRotatePositionDirection = 1;
+        }
+      }
+      else if (sentryRotatePositionDirection == 1)
+      {
+        // Currently moving right
+        Serial.println("\nRotating Sentry Mode, turning right.");
+        safeTurretMove([]() { moveRight(1); });
+
+        // Record move
+        sentryRotatePosition++;
+
+        if (sentryRotatePosition >= sentryRotatePositionMax)
+        {
+          // Switch direction
+          sentryRotatePositionDirection = -1;
+        }
+      }
+
+      // TODO: Check for threats
+      // TODO: Check for threats
+      // TODO: Check for threats
+
+      xSemaphoreGive(sentryModesToggleMutex);
+
+      // Probably remove this delay once image analysis is in place and taking up time.
+      vTaskDelay(pdMS_TO_TICKS(2000));
+    }
+  }
+}
+
+void sentryModeStationaryTask(void *pvParameters)
+{
+  while (true)
+  {
+    vTaskDelay(pdMS_TO_TICKS(500)); // Delay for 500ms
+
+    if (xSemaphoreTake(sentryModesToggleMutex, portMAX_DELAY))
+    {
+      if (!sentryStationaryModeToggle)
+      {
+        xSemaphoreGive(sentryModesToggleMutex);
+        continue;
+      }
+
+      // TODO: Check for threats
+      // TODO: Check for threats
+      // TODO: Check for threats
+
+      xSemaphoreGive(sentryModesToggleMutex);
+    }
   }
 }
 
@@ -709,6 +823,14 @@ void setup()
   if (computerVisionToggleMutex == NULL)
   {
     Serial.println("Failed to create computer vision toggle mutex");
+    while (true)
+      ; // Halt if mutex creation fails
+  }
+
+  sentryModesToggleMutex = xSemaphoreCreateMutex();
+  if (sentryModesToggleMutex == NULL)
+  {
+    Serial.println("Failed to create sentry mode toggle mutex");
     while (true)
       ; // Halt if mutex creation fails
   }
@@ -771,6 +893,9 @@ void setup()
   xTaskCreatePinnedToCore(irTask, "IR Task", 2048, NULL, 1, NULL, 0);                // Pin irTask to core 0
   xTaskCreatePinnedToCore(otaTask, "OTA Task", 2048, NULL, 1, NULL, 0);              // Pin otaTask to core 0
   xTaskCreatePinnedToCore(aiTask, "AI Task", 4048, NULL, 1, NULL, 1);                // Pin aiTask to core 1
+
+  xTaskCreate(sentryModeRotatingTask, "Sentry Mode Rotating Task", 2048, NULL, 1, NULL);
+  xTaskCreate(sentryModeStationaryTask, "Sentry Mode Stationary Task", 2048, NULL, 1, NULL);
   Serial.println("Done creating tasks.");
 }
 
@@ -905,6 +1030,36 @@ void fireAll()
   vTaskDelay(pdMS_TO_TICKS(5));                   // delay for smoothness
 }
 
+void sentryStationary()
+{
+  Serial.print("TOGGLE SENTRY (STATIONARY) MODE");
+
+  if (xSemaphoreTake(sentryModesToggleMutex, portMAX_DELAY))
+  {
+    // TODO: Implement
+    // TODO: Implement
+
+    sentryStationaryModeToggle = !sentryStationaryModeToggle;
+
+    xSemaphoreGive(sentryModesToggleMutex);
+  }
+}
+
+void sentryRotating()
+{
+  Serial.print("TOGGLE SENTRY (ROTATING) MODE");
+
+  if (xSemaphoreTake(sentryModesToggleMutex, portMAX_DELAY))
+  {
+    // TODO: Implement
+    // TODO: Implement
+
+    sentryRotatingModeToggle = !sentryRotatingModeToggle;
+
+    xSemaphoreGive(sentryModesToggleMutex);
+  }
+}
+
 /// @brief Shoot around aimlessly.
 void yosemiteSam()
 {
@@ -1005,6 +1160,22 @@ void webServerHandle_shakeHeadYes()
   webServer.send(200, "application/json", "{ \"status\": \"ok\" }");
 }
 
+void webServerHandle_sentryStationary()
+{
+  Serial.println("Handling sentryStationary");
+  safeTurretMove(handleCommand_sentryStationary);
+
+  webServer.send(200, "application/json", "{ \"status\": \"ok\" }");
+}
+
+void webServerHandle_sentryRotating()
+{
+  Serial.println("Handling sentryRotating");
+  safeTurretMove(handleCommand_sentryRotating);
+
+  webServer.send(200, "application/json", "{ \"status\": \"ok\" }");
+}
+
 void webServerHandle_yosemiteSam()
 {
   Serial.println("Handling yosemiteSam");
@@ -1074,6 +1245,16 @@ void handleCommand_shakeHeadYes()
   vTaskDelay(pdMS_TO_TICKS(50));
 }
 
+void handleCommand_sentryStationary()
+{
+  sentryStationary();
+}
+
+void handleCommand_sentryRotating()
+{
+  sentryRotating();
+}
+
 void handleCommand_yosemiteSam()
 {
   yosemiteSam();
@@ -1110,6 +1291,7 @@ String SendHTML()
               .button-fire {background-color: #ff3333;}
               .button-fire-all {background-color: #e40000;}
               .button-yosemite-sam {background-color: #bb0000;}
+              .button-sentry {background-color:#ffad31;}
               .button-neutral {background-color: #71a6c9;}
               p {font-size: 14px;color: #888;margin-bottom: 10px;}
           </style>
@@ -1172,7 +1354,30 @@ String SendHTML()
                           </td>
                       </tr>
                       <tr>
-                          <td>&nbsp;</td>
+                          <td>
+  )";
+  if (xSemaphoreTake(sentryModesToggleMutex, portMAX_DELAY))
+  {
+    if (sentryRotatingModeToggle)
+    {
+      htmlString += R"(
+                              <center><p>Sentry Mode<br />(Rotating)<br /><b>On</b></p></center>
+                              <a class="button button-sentry" href="#" onclick="handleClick('/sentryRotatingMode');">Turn Off</a>
+      )";
+    }
+    else
+    {
+      htmlString += R"(
+                              <center><p>Sentry Mode<br />(Rotating)<br /><b>Off</b></p></center>
+                              <a class="button button-sentry" href="#" onclick="handleClick('/sentryRotatingMode');">Turn On</a>
+      )";
+    }
+
+    xSemaphoreGive(sentryModesToggleMutex);
+  }
+
+  htmlString += R"(
+                          </td>
                           <td>
   )";
 
@@ -1181,14 +1386,14 @@ String SendHTML()
     if (computerVisionToggle)
     {
       htmlString += R"(
-                              <p>Computer Vision <b>On</b></p>
+                              <center><p>Computer<br />Vision<br /><b>On</b></p></center>
                               <a class="button button-neutral" href="#" onclick="handleClick('/toggleComputerVision');">Turn Off</a>
       )";
     }
     else
     {
       htmlString += R"(
-                              <p>Comptuer Vision <b>Off</b></p>
+                              <center><p>Computer<br />Vision<br /><b>Off</b></p></center>
                               <a class="button button-neutral" href="#" onclick="handleClick('/toggleComputerVision');">Turn On</a>
       )";
     }
@@ -1198,7 +1403,30 @@ String SendHTML()
 
   htmlString += R"(
                           </td>
-                          <td>&nbsp;</td>
+                          <td>
+  )";
+  if (xSemaphoreTake(sentryModesToggleMutex, portMAX_DELAY))
+  {
+    if (sentryStationaryModeToggle)
+    {
+      htmlString += R"(
+                              <center><p>Sentry Mode<br />(Stationary)<br /><b>On</b></p></center>
+                              <a class="button button-sentry" href="#" onclick="handleClick('/sentryStationaryMode');">Turn Off</a>
+      )";
+    }
+    else
+    {
+      htmlString += R"(
+                              <center><p>Sentry Mode<br />(Stationary)<br /><b>Off</b></p></center>
+                              <a class="button button-sentry" href="#" onclick="handleClick('/sentryStationaryMode');">Turn On</a>
+      )";
+    }
+
+    xSemaphoreGive(sentryModesToggleMutex);
+  }
+
+  htmlString += R"(
+                          </td>
                       </tr>
                   </table>
               </p>
